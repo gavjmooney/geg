@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GEG Graph File Format",
+  "type": "object",
+  "properties": {
+    "graph": {
+      "type": "object",
+      "properties": {
+        "doi": { "type": "string" },
+        "created": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "license": { "type": "string" },
+        "directed": { "type": "boolean" }
+      },
+      "required": ["directed"]
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "position": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "shape": { "type": "string", "enum": ["square", "ellipse"] },
+          "colour": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        },
+        "required": ["id"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "polyline": { "type": "boolean" },
+          "path": { "type": "string" }
+        },
+        "required": ["id", "source", "target"]
+      }
+    }
+  },
+  "required": ["nodes", "edges"]
+}
