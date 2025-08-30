@@ -1,0 +1,45 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+.pytest_cache/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Coverage/reports/logs
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# IDE/editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env/config
+.env
+.env.*
+.pypirc
+
+# Jupyter
+.ipynb_checkpoints/
+

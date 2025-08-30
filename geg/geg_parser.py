@@ -17,6 +17,26 @@ import xml.dom.minidom
 from scipy.spatial.distance import pdist
 from typing import Any, Dict, Hashable, Iterable, List, Optional, Tuple, Union
 
+def _coerce_bool(value: Any) -> Any:
+    """
+    Convert common string/number representations to Python bools.
+
+    Returns the original value if it cannot be confidently coerced.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in {"true", "1", "yes", "y", "t"}:
+            return True
+        if v in {"false", "0", "no", "n", "f"}:
+            return False
+        return value
+    if isinstance(value, (int, float)):
+        # Treat any non-zero as True
+        return bool(value)
+    return value
+
 def get_convex_hull_area(G: nx.Graph, tol: float = 1e-6) -> float:
     """
     Compute the area of the convex hull of the promoted drawing.
@@ -186,11 +206,14 @@ def read_geg(input_file: str) -> nx.Graph:
     with open(input_file, "r") as file:
         data = json.load(file)
 
+    # Coerce possible non-standard boolean encodings for 'directed'
+    directed_flag = _coerce_bool(data.get("graph", {}).get("directed", False))
+
     if is_multigraph_file(input_file):
-        G = nx.MultiDiGraph() if data["graph"].get("directed", False) else nx.MultiGraph()
+        G = nx.MultiDiGraph() if directed_flag else nx.MultiGraph()
     else:
         # Create a directed or undirected graph
-        G = nx.DiGraph() if data["graph"].get("directed", False) else nx.Graph()
+        G = nx.DiGraph() if directed_flag else nx.Graph()
 
     # Store graph-level properties (metadata)
     G.graph.update({k: v for k, v in data["graph"].items() if k != "directed"})
@@ -252,6 +275,9 @@ def read_geg(input_file: str) -> nx.Graph:
         source = edge["source"]
         target = edge["target"]
         edge_attributes = {k: v for k, v in edge.items() if k not in ["id"]}#, "source", "target"]}
+        # Normalize boolean-like fields (e.g., 'polyline')
+        if "polyline" in edge_attributes:
+            edge_attributes["polyline"] = _coerce_bool(edge_attributes["polyline"])
         G.add_edge(source, target, id=edge_id, **edge_attributes)
 
     return G

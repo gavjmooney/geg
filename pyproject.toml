@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geg-metrics"
+version = "0.1.3"
+description = "Graph drawing metrics and GEG parser"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Gavin J. Mooney" }]
+dependencies = [
+  "networkx>=2.8",
+  "svgpathtools>=1.6.1",
+  "numpy>=1.23",
+  "scipy>=1.9",
+  "scikit-learn>=1.1",
+]
+
+[project.urls]
+Homepage = "https://gavjmooney.com/geg"
+
+[tool.hatch.build]
+include = [
+  "geg/**",
+  "README.md",
+  "pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["geg"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "geg/**",
+  "README.md",
+  "pyproject.toml",
+]
