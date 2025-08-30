@@ -4,6 +4,9 @@ GEG Encodes Graphs is a JSON based storage format for encoding graph drawings wh
 
 This package contains code for reading/writing GEG files, converting to/from other common formats, and several readability metric implementations.
 
+For more information, see the following publication:
+G. J. Mooney, T. Hegemann, A. Wolff, M. Wybrow, and H. Purchase, "Universal Quality Metrics for Graph Drawings: Which Graphs Excite Us Most?," in Graph Drawing and Network Visualization (GD 2025), 2025.
+
 ## Installation
 Install from PyPI (distribution name is `geg-metrics`):
 
@@ -55,5 +58,3 @@ geg.to_svg(G, "example.svg", margin=50)
 - Install name on PyPI is `geg-metrics`, but the import is `import geg`.
 - Most metrics expect node coordinates (`x`, `y`) and edge paths (`path`) to be present.
 
-### For more information, see the following publication:
-G. J. Mooney, T. Hegemann, A. Wolff, M. Wybrow, and H. Purchase, "Universal Quality Metrics for Graph Drawings: Which Graphs Excite Us Most?," in Graph Drawing and Network Visualization (GD 2025), 2025.

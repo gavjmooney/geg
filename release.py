@@ -94,6 +94,11 @@ def main() -> None:
     upload_cmd = [sys.executable, "-m", "twine", "upload"]
     if args.repo == "testpypi":
         upload_cmd += ["--repository", "testpypi"]
+    # If credentials are present in environment, pass them explicitly to avoid prompts
+    tw_user = os.environ.get("TWINE_USERNAME")
+    tw_pass = os.environ.get("TWINE_PASSWORD")
+    if tw_user and tw_pass:
+        upload_cmd += ["--username", tw_user, "--password", tw_pass]
     upload_cmd += ["dist/*"]
     run(upload_cmd)
 
