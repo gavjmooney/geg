@@ -1,57 +1,71 @@
-from . import geg_parser
-import numpy as np
 import networkx as nx
-from sklearn.metrics import pairwise_distances
+import numpy as np
 from sklearn.isotonic import IsotonicRegression
-from typing import List
+from sklearn.metrics import pairwise_distances
 
-def kruskal_stress(G: nx.Graph) -> float:
-    """
-    Kruskal stress quality metric for a 2D layout, mapped to [0, 1].
+from .geg_parser import get_convex_hull_area
 
-    Computes all-pairs shortest path distances in the graph (d_ij) and 2D
-    Euclidean distances in the layout (x_ij). Fits an isotonic regression
-    h(d_ij) to the sorted pairs and computes stress = sqrt(sum((x_ij-h_ij)^2)
-    / sum(x_ij^2)). Returns 1 - stress so that higher is better.
 
-    Args:
-        G: A NetworkX graph with node coordinates 'x' and 'y'.
-
-    Returns:
-        A float in [0, 1], where 1 indicates perfect monotone correspondence
-        between graph-theoretic and layout distances.
-    """
-
-    if G.number_of_nodes() == 1:
-        return 1.0
-
-    # All-pairs shortest path lengths
+def _connected_kruskal(G: nx.Graph) -> float:
+    """Kruskal stress on a connected component, mapped to [0, 1]."""
     apsp = dict(nx.all_pairs_shortest_path_length(G))
 
-    # Node ordering and layout matrix X
     nodes = list(G.nodes())
-    X = np.array([[G.nodes[n]['x'], G.nodes[n]['y']] for n in nodes])
+    X = np.array([[G.nodes[n]["x"], G.nodes[n]["y"]] for n in nodes])
 
-    # Distance matrices: embedding vs. graph
     Xij = pairwise_distances(X)
-    D   = np.array([[apsp[i][j] for i in nodes] for j in nodes])
+    D = np.array([[apsp[i][j] for i in nodes] for j in nodes])
 
-    # Extract upper triangles (k=1 to skip diagonal)
     triu = np.triu_indices_from(Xij, k=1)
     xij, dij = Xij[triu], D[triu]
 
-    # Sort by graph distances
     order = np.argsort(dij)
     dij_sorted = dij[order]
     xij_sorted = xij[order]
 
-    # Fit isotonic regression to get fitted distances hij
     hij = IsotonicRegression().fit(dij_sorted, xij_sorted).predict(dij_sorted)
 
-    # Compute Kruskal stress and map to [0, 1]
-    raw = np.sum((xij_sorted - hij)**2)
-    norm = np.sum(xij_sorted**2)
+    raw = np.sum((xij_sorted - hij) ** 2)
+    norm = np.sum(xij_sorted ** 2)
     if norm == 0:
         return 1.0
-    kruskal = np.sqrt(raw / norm)
-    return 1.0 - kruskal
+    return 1.0 - float(np.sqrt(raw / norm))
+
+
+def kruskal_stress(G: nx.Graph) -> float:
+    """Kruskal stress metric mapped to [0, 1] (higher is better).
+
+    Fits an isotonic regression h(d_ij) to pairs of (graph-theoretic distance,
+    layout Euclidean distance) and reports 1 - sqrt(sum((x_ij-h_ij)^2)/sum(x_ij^2)).
+
+    For disconnected drawings, per paper §3.3, returns a weighted sum of the
+    per-component scores, weights proportional to each component's convex-hull
+    area. Singleton components contribute nothing (no pairs).
+
+    Args:
+        G: NetworkX graph with node attributes 'x' and 'y'.
+
+    Returns:
+        Float in [0, 1], 1 = perfect monotone correspondence.
+    """
+    if G.number_of_nodes() <= 1:
+        return 1.0
+
+    components = [G.subgraph(c).copy() for c in nx.connected_components(G.to_undirected())]
+    if len(components) == 1:
+        return _connected_kruskal(G)
+
+    scores = []
+    weights = []
+    for sub in components:
+        if sub.number_of_nodes() <= 1:
+            continue
+        scores.append(_connected_kruskal(sub))
+        weights.append(get_convex_hull_area(sub))
+
+    total = sum(weights)
+    if total == 0:
+        # Every non-singleton component is itself degenerate (collinear with
+        # zero extent). Treat as nothing to penalise.
+        return 1.0
+    return sum(s * w for s, w in zip(scores, weights)) / total

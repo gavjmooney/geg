@@ -102,3 +102,56 @@ class TestInvariants:
         G2 = _layout(scaled)
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert kruskal_stress(G1) == pytest.approx(kruskal_stress(G2))
+
+
+class TestDisconnected:
+    """Paper §3.3: KSM on disconnected drawings is a weighted sum over
+    connected components, weights proportional to each component's convex-hull
+    area."""
+
+    def test_two_perfectly_embedded_components_return_one(self):
+        # Component 1: unit equilateral triangle.
+        # Component 2: equilateral triangle scaled ×2, translated away.
+        G = _layout({
+            "a": (0.0, 0.0),
+            "b": (1.0, 0.0),
+            "c": (0.5, math.sqrt(3) / 2),
+            "d": (100.0, 100.0),
+            "e": (102.0, 100.0),
+            "f": (101.0, 100.0 + math.sqrt(3)),
+        })
+        G.add_edges_from([
+            ("a", "b"), ("b", "c"), ("c", "a"),
+            ("d", "e"), ("e", "f"), ("f", "d"),
+        ])
+        # Both components are perfectly embedded (KSM per-component = 1), so
+        # the weighted sum is 1 regardless of the individual hull weights.
+        assert kruskal_stress(G) == pytest.approx(1.0)
+
+    def test_single_component_matches_plain_kruskal(self):
+        # A disconnected "drawing" whose only non-trivial component is the
+        # stretched path should give the same number as the connected version,
+        # because isolated singleton nodes have no pairs and zero weight.
+        path_coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        G_connected = _layout(path_coords)
+        G_connected.add_edges_from([("a", "b"), ("b", "c")])
+
+        G_disconnected = _layout({
+            **path_coords,
+            "d": (50.0, 50.0),  # isolated singleton
+        })
+        G_disconnected.add_edges_from([("a", "b"), ("b", "c")])
+
+        assert kruskal_stress(G_disconnected) == pytest.approx(
+            kruskal_stress(G_connected)
+        )
+
+    def test_does_not_raise_on_disconnected(self):
+        # Two disjoint edges — connected-case code path KeyErrors here.
+        G = _layout({
+            "a": (0.0, 0.0), "b": (1.0, 0.0),
+            "c": (5.0, 5.0), "d": (6.0, 5.0),
+        })
+        G.add_edges_from([("a", "b"), ("c", "d")])
+        result = kruskal_stress(G)
+        assert 0.0 <= result <= 1.0

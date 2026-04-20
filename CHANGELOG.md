@@ -23,4 +23,4 @@ Ongoing TDD refactor of the metrics library. Entries below track public-API–af
 - _(none yet)_
 
 ### Fixed
-- _(none yet)_
+- `kruskal_stress`: now handles disconnected drawings per paper §3.3 (weighted sum by per-component convex-hull area). The previous implementation raised `KeyError` on any graph with more than one connected component.
