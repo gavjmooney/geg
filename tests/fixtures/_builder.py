@@ -418,6 +418,14 @@ register(Fixture(
 ))
 
 
+# ---------- Post-registration: metrics that hold 1.0 across every fixture ----------
+# Every Phase-3 fixture is constructed so that no non-endpoint node is close
+# enough to any edge to trigger a node-edge-occlusion penalty at the default
+# epsilon_fraction=0.02. Pin that expectation uniformly.
+for _fx in _REGISTRY.values():
+    _fx.expected.setdefault("node_edge_occlusion", 1.0)
+
+
 # ---------- Artefact generation ----------
 
 def generate(name: Optional[str] = None) -> None:

@@ -25,6 +25,7 @@ _METRIC_FUNCS = {
     "gabriel_ratio_nodes": geg.gabriel_ratio_nodes,
     "kruskal_stress": geg.kruskal_stress,
     "neighbourhood_preservation": geg.neighbourhood_preservation,
+    "node_edge_occlusion": geg.node_edge_occlusion,
     "node_resolution": geg.node_resolution,
     "node_uniformity": geg.node_uniformity,
 }

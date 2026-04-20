@@ -8,7 +8,8 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Added
 
-- **Test suite.** Pytest runnable from the package root (`pytest`), including 328 tests covering every public metric, every canonical helper, every fixture × expected-value claim, and the three I/O formats (GEG / GraphML / GML). Full suite runs in ~1.8s.
+- **`node_edge_occlusion(G, epsilon_fraction=0.02, samples_per_curve=50)`** — new metric (not in the GD 2025 paper yet). For every edge, finds the non-endpoint node whose bounding disk comes closest to the drawn edge and records a cubic soft-overlap penalty `max(0, 1 - max(0, d - r) / ε) ** 3`, where `d` is the minimum distance from the node centre to the edge geometry, `r` is the node's `radius` attribute (defaults to 0 if missing), and `ε` is a fraction of the bounding-box diagonal. The score is 1 minus the mean per-edge worst-case penalty. Curved / polyline edges are handled by sampling the path via `_paths.edge_polyline`; the bbox uses curve-promoted geometry via `get_bounding_box` for consistency with Asp / NU. **Definition is provisional — pending final confirmation**, as flagged in `library_update_brief.md`.
+- **Test suite.** Pytest runnable from the package root (`pytest`), including 355 tests covering every public metric, every canonical helper, every fixture × expected-value claim, and the three I/O formats (GEG / GraphML / GML). Full suite runs in ~1.8s.
 - **`geg/io/` subpackage** holding the file-format readers, writers, and converters:
   - `geg.io.geg` — GEG JSON reader/writer + file-level introspection (`has_self_loops_file`, `is_multigraph_file`).
   - `geg.io.graphml` — yEd-flavoured GraphML reader/writer + `graphml_to_geg`; merges the former `geg/parse_graph.py` module.

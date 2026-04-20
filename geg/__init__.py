@@ -18,6 +18,7 @@ from .edge_orthogonality import edge_orthogonality, curved_edge_orthogonality
 from .gabriel_ratio import gabriel_ratio_edges, gabriel_ratio_nodes
 from .kruskal_stress import kruskal_stress
 from .neighbourhood_preservation import neighbourhood_preservation
+from .node_edge_occlusion import node_edge_occlusion
 from .node_resolution import node_resolution
 from .node_uniformity import node_uniformity
 
@@ -36,5 +37,6 @@ __all__ = [
     "crossing_angle","edge_crossings","edge_crossings_bezier",
     "edge_length_deviation","edge_orthogonality","curved_edge_orthogonality",
     "gabriel_ratio_edges","gabriel_ratio_nodes","kruskal_stress",
-    "neighbourhood_preservation","node_resolution","node_uniformity",
+    "neighbourhood_preservation","node_edge_occlusion",
+    "node_resolution","node_uniformity",
 ]
