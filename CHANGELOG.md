@@ -14,10 +14,11 @@ Ongoing TDD refactor of the metrics library. Entries below track public-API–af
   - `_paths`: `parse_path`, `flatten_path_to_polyline`, `flatten_path_to_segments`, `polyline_length`, `edge_polyline`.
 
 ### Changed
-- _(none yet)_
+- `edge_orthogonality(G)` is now the unified paper §3.2 eq. (5)-(6) definition: handles straight, polyline, and curved edges via length-weighted segment deviation. Behaviour is unchanged for drawings with only straight edges; for drawings with curved/polyline edges, it now incorporates them (previously it ignored the `path` attribute).
+- `edge_orthogonality(G)` returns 1.0 on edgeless graphs (was 0.0).
 
 ### Deprecated
-- _(none yet)_
+- `curved_edge_orthogonality(G, global_segments_N=...)`: emits DeprecationWarning and delegates to `edge_orthogonality`. `global_segments_N` is forwarded as `samples_per_curve`.
 
 ### Removed
 - _(none yet)_

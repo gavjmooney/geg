@@ -1,116 +1,98 @@
+"""Edge orthogonality metric (paper §3.2 eq. 5-6).
+
+Unified definition that handles straight, polyline, and curved edges:
+    EO(D) = 1 - (1/|E|) * sum_e δ_e
+    δ_e   = sum_j min(θ_{e,j}, |90 - θ_{e,j}|, 180 - θ_{e,j}) / 45
+                   * (ℓ_{e,j} / L(e))
+where θ_{e,j} is the angle (in degrees) of the j-th polyline segment of edge e
+relative to the horizontal. Straight edges are the special case k_e = 1.
+"""
+
 import math
-from . import geg_parser
+import warnings
+
 import networkx as nx
-from svgpathtools import parse_path
-from typing import Optional
 
-def edge_orthogonality(G: nx.Graph) -> float:
-        """
-        Orthogonality score for straight-line edges in [0, 1].
+from ._geometry import distance
+from ._paths import edge_polyline
 
-        For each straight edge, compute its angle relative to the horizontal,
-        convert to the nearest orthogonal deviation (0 for axis-aligned, 1 for
-        a 45-degree diagonal), then average across edges and invert as 1 - mean.
 
-        Args:
-            G: A NetworkX graph with node coordinates 'x' and 'y'.
+def _segment_angle_deg(p0, p1) -> float:
+    """Absolute angle (degrees) of segment p0→p1 relative to the horizontal,
+    folded into [0, 180)."""
+    dx = p1[0] - p0[0]
+    dy = p1[1] - p0[1]
+    # atan2 returns (-pi, pi]; taking absolute folds to [0, pi]; we want [0, 180).
+    theta = math.degrees(math.atan2(abs(dy), abs(dx)))
+    # Now theta ∈ [0, 90]; paper's formula is already symmetric under the
+    # 90° / 180° folds, so this is sufficient.
+    return theta
 
-        Returns:
-            A float in [0, 1] where 1.0 means perfectly orthogonal (all edges
-            aligned to horizontal/vertical) and 0 means highly non-orthogonal.
-        """
-        if G.number_of_edges() == 0:
-            return 0.0
-        
-        ortho_list = []
 
-        # Iterate over each edge and compute its minimum deviation from orthogonal axes
-        for e in G.edges:
-            source = e[0]
-            target = e[1]
+def _edge_deviation(poly) -> float:
+    """Length-weighted δ_e for a single edge polyline (sequence of points)."""
+    if len(poly) < 2:
+        return 0.0
 
-            x1, y1 = G.nodes[source]["x"], G.nodes[source]["y"]
-            x2, y2 = G.nodes[target]["x"], G.nodes[target]["y"]
+    segments = [(poly[i], poly[i + 1]) for i in range(len(poly) - 1)]
+    seg_lens = [distance(a, b) for a, b in segments]
+    total_len = sum(seg_lens)
+    if total_len == 0:
+        return 0.0
 
-            if x2 - x1 == 0:
-                gradient = 0
-                # note: gradient of 0 is incorrect for a vertical line, but since we only care about deviation from
-                # orthogonal axes, it's fine in this case
-            else:
-                gradient = (y2 - y1) / (x2 - x1) 
+    delta = 0.0
+    for (a, b), L in zip(segments, seg_lens):
+        if L == 0:
+            continue
+        theta = _segment_angle_deg(a, b)
+        # min(θ, |90 - θ|, 180 - θ), paper §3.2 eq. 6.
+        seg_dev = min(theta, abs(90.0 - theta), 180.0 - theta) / 45.0
+        delta += seg_dev * (L / total_len)
+    return delta
 
-            angle = math.degrees(math.atan(abs(gradient)))
 
-            edge_ortho = min(angle, abs(90-angle), 180-angle) / 45.0
-            ortho_list.append(edge_ortho)
+def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 50) -> float:
+    """Edge orthogonality metric in [0, 1], per paper §3.2 eq. (5)-(6).
 
-        # Return 1 minus the average deviation
-        return 1 - (sum(ortho_list) / G.number_of_edges())
+    Each edge is treated as a polyline: straight edges are a single segment,
+    polyline/curved edges are sampled. The per-edge deviation is a length-
+    weighted average of each segment's deviation from the nearest axis
+    (scaled so 0 = axis-aligned, 1 = 45° diagonal). The metric is 1 minus the
+    mean per-edge deviation.
 
+    Edgeless graphs return 1.0 (vacuously orthogonal).
+
+    Args:
+        G: NetworkX graph with node 'x', 'y' and optional edge 'path' attrs.
+        samples_per_curve: Sample density for non-line path segments (Bezier etc).
+
+    Returns:
+        Float in [0, 1], 1 = all edges axis-aligned.
+    """
+    if G.number_of_edges() == 0:
+        return 1.0
+
+    deviations = []
+    for u, v, attrs in G.edges(data=True):
+        source = (G.nodes[u]["x"], G.nodes[u]["y"])
+        target = (G.nodes[v]["x"], G.nodes[v]["y"])
+        poly = edge_polyline(source, target, attrs.get("path"), samples_per_curve=samples_per_curve)
+        deviations.append(_edge_deviation(poly))
+
+    return 1.0 - sum(deviations) / len(deviations)
 
 
 def curved_edge_orthogonality(G: nx.Graph, global_segments_N: int = 10) -> float:
+    """Deprecated. Use `edge_orthogonality`, which now handles curved edges.
+
+    Kept as a thin delegating alias so downstream code keeps working; emits a
+    DeprecationWarning. The `global_segments_N` parameter is forwarded as
+    `samples_per_curve`.
     """
-    Orthogonality score for curved/polyline edges via length-weighted segments.
-
-    Each curved edge is approximated by many straight segments (via
-    geg.approximate_edge_polyline). For each segment we compute deviation from
-    the nearest orthogonal direction, then weight by the segment length over the
-    edge's total length. We average over edges and invert so 1=perfectly
-    orthogonal.
-
-    Args:
-        G: A NetworkX graph with edge 'path' attributes.
-        global_segments_N: Sampling density for curve approximation.
-
-    Returns:
-        A float in [0, 1] where 1 indicates perfect orthogonality.
-    """
-
-    ortho_list = []
-
-    for u, v, attrs in G.edges(data=True):
-        # approximate the full path as a sequence of points
-        poly = geg_parser.approximate_edge_polyline(G, (u, v, attrs), global_segments_N)
-        if len(poly) < 2:
-            # no real segment: treat as perfectly orthogonal
-            ortho_list.append(0.0)
-            continue
-
-        # total length of this edge
-        total_len = sum(
-            geg_parser.euclidean_distance(poly[i], poly[i+1])
-            for i in range(len(poly)-1)
-        )
-        if total_len == 0:
-            ortho_list.append(0.0)
-            continue
-
-        # accumulate weighted deviation for each segment
-        edge_dev = 0.0
-        for p0, p1 in zip(poly[:-1], poly[1:]):
-            seg_len = geg_parser.euclidean_distance(p0, p1)
-            dx = p1[0] - p0[0]
-            dy = p1[1] - p0[1]
-
-            # angle between this segment and the horizontal axis
-            if dx == 0:
-                angle = 90.0
-            else:
-                angle = math.degrees(math.atan(abs(dy / dx)))
-
-            # deviation from the nearest orthogonal direction, scaled so 0 = perfect, 1 = 45 degrees diagonal
-            seg_ortho = min(angle, abs(90 - angle), 180 - angle) / 45.0
-
-            # weight by segment's proportion of the edge’s total length
-            edge_dev += seg_ortho * (seg_len / total_len)
-
-        ortho_list.append(edge_dev)
-
-
-    if not ortho_list:
-        return 1.0
-
-    # average deviation across all edges, then invert so 1=perfect orthogonality
-    avg_dev = sum(ortho_list) / len(ortho_list)
-    return 1 - avg_dev
+    warnings.warn(
+        "curved_edge_orthogonality is deprecated; call edge_orthogonality "
+        "(now handles straight and curved edges uniformly per paper §3.2).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return edge_orthogonality(G, samples_per_curve=global_segments_N)
