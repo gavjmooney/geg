@@ -176,3 +176,46 @@ class TestEpsilonFraction:
         epsilon = 0.02 * diag
         expected = 1.0 - (1.0 - 0.04 / epsilon) ** 3
         assert node_edge_occlusion(G) == pytest.approx(expected, rel=1e-9)
+
+
+class TestRadiusFallback:
+    """If `radius` is missing but `width`/`height` are present (the shape of
+    graphs returned by read_graphml / read_gml / graphml_to_geg / gml_to_geg),
+    NEO must use the circumscribed-disk radius `max(width, height) / 2`."""
+
+    def test_width_height_drive_occlusion(self):
+        """Node with width=30, height=30 (r_eff = 15) centred 10 units away
+        from a horizontal edge: r_eff > d so that edge is fully occluded."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        G.add_node("mid", x=200.0, y=10.0, width=30.0, height=30.0)
+        G.add_node("far", x=200.0, y=400.0)
+        G.add_edge("u", "v")
+        G.add_edge("u", "far")
+        G.add_edge("v", "far")
+        # 3 edges; only (u,v) is straddled by `mid`'s disk → worst = 1.0.
+        # `far` is well clear of all edges. Expected: 1 - 1/3 ≈ 0.667.
+        assert node_edge_occlusion(G) == pytest.approx(2.0 / 3.0, rel=1e-6)
+
+    def test_explicit_radius_wins_over_width_height(self):
+        """Prefer explicit `radius` to width/height when both exist."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        G.add_node("mid", x=200.0, y=10.0, width=30.0, height=30.0, radius=0.0)
+        G.add_edge("u", "v")
+        # radius=0 overrides width/height → d=10, large epsilon not tripped.
+        assert node_edge_occlusion(G) == pytest.approx(1.0, abs=0.1)
+
+    def test_rectangular_node_uses_max_dimension(self):
+        """A wide-but-thin rectangle: max(width, height) / 2 gives a disk
+        large enough to occlude."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        # Node 6 units off the edge, width=40 (r=20), height=2 (r=1).
+        # max-based radius = 20 > 6 → full occlusion.
+        G.add_node("mid", x=200.0, y=6.0, width=40.0, height=2.0)
+        G.add_edge("u", "v")
+        assert node_edge_occlusion(G) == pytest.approx(0.0, abs=1e-9)

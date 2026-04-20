@@ -18,8 +18,11 @@ cubic exponent makes mild proximity near-zero while strongly penalising
 actual overlap.
 
 Radius awareness: a node's disk straddling the edge (r >= d) is treated as
-maximum occlusion (c = 1). When nodes don't carry a `radius` attribute the
-metric collapses to the centre-to-line form.
+maximum occlusion (c = 1). If a node has no `radius` attribute but carries
+`width` / `height` (as produced by `read_graphml` and `read_gml`), the
+circumscribed-disk radius `max(width, height) / 2` is used. Only when all
+three attributes are absent does the metric fall back to the centre-to-line
+form.
 
 Polyline / curved edges: the edge path is sampled via `_paths.edge_polyline`
 and `d` is the minimum distance from the node centre to any of the resulting
@@ -35,6 +38,36 @@ import networkx as nx
 
 from ._paths import edge_polyline
 from .geg_parser import get_bounding_box
+
+
+def _node_radius(data: dict) -> float:
+    """Resolve a node's effective disk radius for occlusion testing.
+
+    Preference order:
+      1. Explicit `radius` attribute (non-negative).
+      2. Circumscribed disk of the bounding box — `max(width, height) / 2`.
+      3. 0.0 — centre-to-line fallback.
+    """
+    raw_r = data.get("radius")
+    if raw_r is not None:
+        try:
+            r = float(raw_r)
+            if r >= 0:
+                return r
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        w = float(data.get("width", 0.0))
+    except (TypeError, ValueError):
+        w = 0.0
+    try:
+        h = float(data.get("height", 0.0))
+    except (TypeError, ValueError):
+        h = 0.0
+    if w > 0 or h > 0:
+        return max(w, h) / 2.0
+    return 0.0
 
 
 def _segment_point_distance(
@@ -82,11 +115,7 @@ def node_edge_occlusion(
             y = float(data["y"])
         except (TypeError, ValueError):
             continue
-        try:
-            r = float(data.get("radius", 0.0))
-        except (TypeError, ValueError):
-            r = 0.0
-        nodes.append((n, x, y, max(0.0, r)))
+        nodes.append((n, x, y, _node_radius(data)))
 
     if len(nodes) < 2:
         return 1.0

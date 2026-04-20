@@ -29,6 +29,7 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Changed
 
+- **`node_edge_occlusion`**: when a node has no `radius` attribute but carries `width` / `height` (as produced by `read_graphml` and `read_gml`), the metric now uses the circumscribed-disk radius `max(width, height) / 2` instead of silently collapsing to `r = 0`. Only when all three attributes are absent does it fall back to the centre-to-line form. Explicit `radius` still wins when both are present. Previously NEO reported "no occlusion" for drawings whose node disks visibly straddled edges simply because the radius attribute wasn't named correctly after format conversion.
 - **`convert_graphml_to_gml`** now preserves node geometry and edge bends by default (routes through `read_graphml` + `write_gml`). Previously it called `nx.write_gml` which crashed on tuple-valued `bends` attributes. Pass `with_nx=True` for the original raw-networkx behaviour.
 - **`edge_orthogonality(G, samples_per_curve=50)`** is now the unified paper §3.2 eq. (5)-(6) definition for all edges (straight, polyline, or curved). Previously the public function ignored edge `path` attrs and used node-to-node straight-line orientation; curved handling lived in the separate `curved_edge_orthogonality`. Behaviour is unchanged on drawings with straight edges only.
 - **`edge_orthogonality`** returns `1.0` on edgeless graphs (was `0.0`) — matches the "1 = best" convention.
