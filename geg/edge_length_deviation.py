@@ -1,81 +1,71 @@
-from . import geg_parser
-import networkx as nx
-from svgpathtools import parse_path
 from typing import Optional
-import math
+
+import networkx as nx
+
+from ._geometry import distance
+from ._paths import parse_path
+
+
+def _edge_length(G: nx.Graph, u, v, attrs: dict) -> float:
+    """Drawn length of an edge.
+
+    Uses the SVG 'path' arc length when present (via svgpathtools' numerical
+    integration), otherwise the straight-line Euclidean distance between the
+    endpoint node coordinates.
+    """
+    path_str = attrs.get("path")
+    if path_str:
+        path = parse_path(path_str)
+        return float(sum(seg.length(error=1e-5) for seg in path))
+    a = (G.nodes[u]["x"], G.nodes[u]["y"])
+    b = (G.nodes[v]["x"], G.nodes[v]["y"])
+    return distance(a, b)
+
 
 def get_average_edge_length(G: nx.Graph) -> float:
-    """
-    Compute the average drawn edge length.
-
-    For each edge, if a 'path' attribute is present, its length is computed as
-    the sum of segment lengths from the SVG path. Otherwise, the straight-line
-    Euclidean distance between endpoints is used.
-
-    Args:
-        G: A NetworkX graph with node coordinates 'x', 'y' and optional edge 'path'.
-
-    Returns:
-        The mean edge length as a float (0.0 if there are no edges).
-    """
-    lengths = []
-    for u, v, attrs in G.edges(data=True):
-        if attrs.get('path'):
-            # curved or polyline edge
-            path = parse_path(attrs['path'])
-            # sum each segments length to get the total
-            L = sum(seg.length(error=1e-5) for seg in path)
-            # print(L)
-        else:
-            # straight line fallback
-            a = G.nodes[u]['x'], G.nodes[u]['y']
-            b = G.nodes[v]['x'], G.nodes[v]['y']
-            L = geg_parser.euclidean_distance(a, b)
-            # print(u, v, L)
-        lengths.append(L)
-
+    """Mean drawn edge length (0.0 for edgeless graphs)."""
+    lengths = [_edge_length(G, u, v, attrs) for u, v, attrs in G.edges(data=True)]
     if not lengths:
         return 0.0
-    
     return sum(lengths) / len(lengths)
 
 
 def edge_length_deviation(G: nx.Graph, ideal: Optional[float] = None) -> float:
-    """
-    Edge-length uniformity metric in [0, 1] based on relative deviation.
+    """Edge-length deviation metric in [0, 1].
 
-    For each edge, compute its length (using 'path' if present, else Euclidean).
-    Measure the absolute relative deviation |L - ideal| / ideal, average over
-    all edges, then map to [0, 1] using a reciprocal transformation 1/(1+d).
+    Paper §3.2 eq. (4):
+        ELD(D) = 1 / (1 + (1/|E|) * sum_e |L(e) - L_ideal| / L_ideal)
+    with L_ideal the average drawn edge length (or a user-supplied value).
+
+    Edge lengths use the SVG path arc length when present, otherwise the
+    straight-line Euclidean endpoint distance.
+
+    Degenerate cases:
+        - No edges: returns 1.0 (vacuously uniform).
+        - All edges length 0 (so L_ideal = 0): returns 1.0 — the paper's
+          "ELD = 1 iff all edges have the same length" extends to the
+          equal-but-zero case.
 
     Args:
-        G: A NetworkX graph with node coordinates 'x', 'y' and optional edge 'path'.
-        ideal: The target edge length. If None, uses the average drawn edge length.
+        G: NetworkX graph with node 'x'/'y' and optional edge 'path' attrs.
+        ideal: Target edge length. Defaults to the average drawn length.
 
     Returns:
-        A float in [0, 1], where 1.0 indicates all edges match the ideal length.
+        Float in [0, 1], 1 = all edges the same length.
     """
     m = G.number_of_edges()
     if m == 0:
-        return 0.0
+        return 1.0
+
+    lengths = [_edge_length(G, u, v, attrs) for u, v, attrs in G.edges(data=True)]
 
     if ideal is None:
-        ideal = get_average_edge_length(G)
+        ideal = sum(lengths) / m
 
-    total_rel_dev = 0.0
-    for u, v, attrs in G.edges(data=True):
-        if attrs.get('path'):
-            path = parse_path(attrs['path'])
-            L = sum(seg.length(error=1e-5) for seg in path)
-        else:
-            a = (G.nodes[u]['x'], G.nodes[u]['y'])
-            b = (G.nodes[v]['x'], G.nodes[v]['y'])
-            L = geg_parser.euclidean_distance(a, b)
+    if ideal == 0:
+        # All lengths are zero (or an explicit ideal=0 was passed); the
+        # "same length" condition holds vacuously.
+        return 1.0
 
-        total_rel_dev += abs(L - ideal) / ideal
-
-    avg_rel_dev = total_rel_dev / m
-
-    # return math.exp(-avg_rel_dev) # Exponential decay into [0,1]
-
-    return 1.0 / (1.0 + avg_rel_dev) # reciprocal
+    avg_rel_dev = sum(abs(L - ideal) for L in lengths) / (m * ideal)
+    return 1.0 / (1.0 + avg_rel_dev)

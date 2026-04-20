@@ -17,11 +17,11 @@ This file catalogues bugs, numerical red flags, definitional ambiguities, and op
 - **Fix:** Return `1.0` in the degenerate branch; also removed dead `<= 0` guard since bbox dimensions are non-negative by construction.
 - **TVCG-impact:** unknown — would only affect drawings with a fully-collinear bounding box, likely rare in the TVCG dataset. Measure against fixtures during Phase 4.
 
-### ELD-1 — Division by zero if average edge length is 0
-- **Where:** `geg/edge_length_deviation.py:75` (approximately).
-- **What:** When all edges have length 0 (coincident endpoints), `get_average_edge_length` returns 0 and the metric divides by it.
-- **Fix direction:** Guard the degenerate case; return `1.0` (no deviation possible) or document as undefined.
-- **TVCG-impact:** no — TVCG drawings do not contain zero-length edges.
+### ELD-1 — Division by zero if average edge length is 0 [FIXED]
+- **Where:** `geg/edge_length_deviation.py:75` (old).
+- **What:** When all edges have length 0 (coincident endpoints), `get_average_edge_length` returned 0 and the metric divided by it.
+- **Fix:** Guard the `ideal == 0` case; return 1.0 (paper's "same length" condition holds vacuously). Also changed the m=0 (edgeless) return from 0.0 → 1.0 for consistency. Migrated to canonical helpers (`_geometry.distance`, `_paths.parse_path`).
+- **TVCG-impact:** no — TVCG drawings do not contain zero-length edges, and have m>0. Plus, the m=0 code path was unreachable in TVCG.
 
 ### EC-1 — Debug `print()` calls in production path
 - **Where:** `geg/edge_crossings.py:82,87` (approximately).
