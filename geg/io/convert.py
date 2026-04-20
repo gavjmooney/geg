@@ -31,15 +31,23 @@ from .graphml import read_graphml, write_graphml
 
 # ---------- Format-specific converters ----------
 
-def graphml_to_geg(input_file: str, output_file: Optional[str] = None) -> nx.Graph:
+def graphml_to_geg(
+    input_file: str,
+    output_file: Optional[str] = None,
+    *,
+    yed_corner_anchor: Optional[bool] = None,
+) -> nx.Graph:
     """Convert a yEd GraphML drawing to a GEG-canonical NetworkX graph.
 
     Reads via `read_graphml`, preserves node geometry/colour/shape/label/width/
     height, encodes edge bends as an SVG `M…L…` path, and copies line styling
     and labels forward. Optionally writes the resulting graph to `output_file`
     as GEG JSON.
+
+    `yed_corner_anchor` is forwarded to `read_graphml`. See that function's
+    docstring for the yEd top-left-anchor quirk and the override semantics.
     """
-    G = read_graphml(input_file)
+    G = read_graphml(input_file, yed_corner_anchor=yed_corner_anchor)
 
     if G.is_multigraph():
         H: nx.Graph = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()

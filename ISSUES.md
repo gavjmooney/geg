@@ -33,6 +33,12 @@ Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`
 - **Fix:** Removed.
 - **TVCG-impact:** **no** — output only; `edge_crossings_bezier` was experimental.
 
+### GML-1 — yEd GraphML stores node x/y as top-left, not centre  [FIXED]
+- **Where:** `geg/io/graphml.py:read_graphml`.
+- **What:** yEd's GraphML export puts `x`/`y` at the top-left corner of each node's bounding box, while edge bends are in absolute drawing coordinates. Treating x/y as the node centre (as every other source and our own writer do) misaligns the drawing by (width/2, height/2) and makes orthogonal L-shaped routings look diagonal.
+- **Fix:** Reader auto-detects yEd-authored files via the `<!--Created by yEd-->` comment or `xmlns:yed` namespace and shifts `x += width/2, y += height/2`. New `yed_corner_anchor` kwarg on `read_graphml` / `graphml_to_geg` forces or suppresses the shift. `write_graphml` gains a matching kwarg to emit yEd-convention output; default is unchanged (centre-anchored, yed namespace omitted), so library round-trips are an identity.
+- **TVCG-impact:** **unknown.** If any paper fixtures were produced by yEd and consumed without the shift, their metrics (especially EO, EC, CA, NEO) were computed against off-centre node positions. An empirical diff on the dataset would confirm.
+
 ### KSM-2 / NP-2 — DiGraph inputs crash / mis-score  [FIXED]
 - **Where:** `geg/kruskal_stress.py:_connected_kruskal` and `geg/neighbourhood_preservation.py:_connected_np`.
 - **What:** On a directed graph, `nx.all_pairs_shortest_path_length(G)` only records forward reachability, so sinks had no outbound entries and the pairwise distance matrix raised `KeyError`. NP built an asymmetric adjacency against a symmetric k-NN matrix, producing artificially low Jaccard scores.

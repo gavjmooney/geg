@@ -155,3 +155,137 @@ class TestGraphMLWriteRoundTrip:
             assert G2.edges[u, v].get("bends") == G.edges[u, v].get("bends")
             assert G2.edges[u, v].get("colour") == G.edges[u, v].get("colour")
             assert G2.edges[u, v].get("stroke_width") == G.edges[u, v].get("stroke_width")
+
+
+# ---------- yEd corner-anchor auto-detect ----------
+
+class TestYedCornerAnchor:
+    """yEd stores node x/y as the top-left of the bounding box; every other
+    source (GML export, our own writer) uses the centre. The reader
+    auto-shifts when it detects a yEd-authored file via the `<!--Created
+    by yEd-->` comment or the `xmlns:yed` namespace declaration.
+    """
+
+    def _yed_file(self, tmp_path, with_marker=True):
+        """A minimal yEd-style GraphML file. `with_marker` controls whether
+        the Created-by-yEd comment is present."""
+        marker = "<!--Created by yEd 3.24-->" if with_marker else ""
+        text = f"""<?xml version="1.0"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:y="http://www.yworks.com/xml/graphml">
+  {marker}
+  <key id="d1" yfiles.type="nodegraphics" for="node"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="a">
+      <data key="d1">
+        <y:ShapeNode>
+          <y:Geometry x="100.0" y="50.0" width="40.0" height="30.0"/>
+        </y:ShapeNode>
+      </data>
+    </node>
+  </graph>
+</graphml>
+"""
+        p = tmp_path / "f.graphml"
+        p.write_text(text)
+        return p
+
+    def test_auto_detects_via_comment(self, tmp_path):
+        p = self._yed_file(tmp_path, with_marker=True)
+        G = read_graphml(str(p))
+        # Top-left was (100, 50) with 40x30 node → centre (120, 65).
+        assert G.nodes["a"]["x"] == 120.0
+        assert G.nodes["a"]["y"] == 65.0
+
+    def test_no_shift_when_file_is_not_yed(self, tmp_path):
+        p = self._yed_file(tmp_path, with_marker=False)
+        G = read_graphml(str(p))
+        # No auto-detect trigger → x/y passed through.
+        assert G.nodes["a"]["x"] == 100.0
+        assert G.nodes["a"]["y"] == 50.0
+
+    def test_explicit_true_forces_shift(self, tmp_path):
+        p = self._yed_file(tmp_path, with_marker=False)
+        G = read_graphml(str(p), yed_corner_anchor=True)
+        assert G.nodes["a"]["x"] == 120.0
+        assert G.nodes["a"]["y"] == 65.0
+
+    def test_explicit_false_skips_shift(self, tmp_path):
+        p = self._yed_file(tmp_path, with_marker=True)
+        G = read_graphml(str(p), yed_corner_anchor=False)
+        assert G.nodes["a"]["x"] == 100.0
+        assert G.nodes["a"]["y"] == 50.0
+
+    def test_graphml_to_geg_passes_kwarg_through(self, tmp_path):
+        from geg import graphml_to_geg
+        p = self._yed_file(tmp_path, with_marker=False)
+        G = graphml_to_geg(str(p), yed_corner_anchor=True)
+        assert G.nodes["a"]["x"] == 120.0
+
+    def test_bends_line_up_with_shifted_centres(self, tmp_path):
+        """End-to-end: a yEd file with an orthogonal L-bend must read back
+        so that node centres and bend points form right-angle segments."""
+        text = """<?xml version="1.0"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:y="http://www.yworks.com/xml/graphml">
+  <!--Created by yEd 3.24-->
+  <key id="d1" yfiles.type="nodegraphics" for="node"/>
+  <key id="d2" yfiles.type="edgegraphics" for="edge"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="a">
+      <data key="d1">
+        <y:ShapeNode>
+          <y:Geometry x="-15.0" y="-15.0" width="30.0" height="30.0"/>
+        </y:ShapeNode>
+      </data>
+    </node>
+    <node id="b">
+      <data key="d1">
+        <y:ShapeNode>
+          <y:Geometry x="85.0" y="85.0" width="30.0" height="30.0"/>
+        </y:ShapeNode>
+      </data>
+    </node>
+    <edge source="a" target="b">
+      <data key="d2">
+        <y:PolyLineEdge>
+          <y:Path><y:Point x="100.0" y="0.0"/></y:Path>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+  </graph>
+</graphml>
+"""
+        p = tmp_path / "orth.graphml"
+        p.write_text(text)
+        G = read_graphml(str(p))
+        # Centres: a=(0,0), b=(100,100), bend=(100,0) → right-angle L.
+        assert G.nodes["a"]["x"] == 0.0 and G.nodes["a"]["y"] == 0.0
+        assert G.nodes["b"]["x"] == 100.0 and G.nodes["b"]["y"] == 100.0
+        assert G.edges["a", "b"]["bends"] == [(100.0, 0.0)]
+
+
+class TestWriteGraphMLYedCornerAnchor:
+    def test_default_write_round_trips_as_identity(self, tmp_path):
+        """Without yed_corner_anchor the writer keeps centre-anchored coords
+        and omits the yed namespace, so auto-detect does not fire on re-read."""
+        G = read_graphml(str(SAMPLE))
+        out = tmp_path / "rt.graphml"
+        write_graphml(G, str(out))
+        G2 = read_graphml(str(out))
+        for n in G.nodes:
+            assert G2.nodes[n]["x"] == G.nodes[n]["x"]
+            assert G2.nodes[n]["y"] == G.nodes[n]["y"]
+
+    def test_yed_corner_anchor_writer_emits_top_left_and_round_trips(self, tmp_path):
+        """yed_corner_anchor=True shifts x/y to top-left on write AND declares
+        xmlns:yed, so auto-detect fires on re-read and shifts back."""
+        G = read_graphml(str(SAMPLE))  # centre-anchored
+        out = tmp_path / "yed.graphml"
+        write_graphml(G, str(out), yed_corner_anchor=True)
+        # File should declare xmlns:yed.
+        assert "xmlns:yed" in out.read_text()
+        G2 = read_graphml(str(out))  # auto-detect → shift back
+        for n in G.nodes:
+            assert G2.nodes[n]["x"] == pytest.approx(G.nodes[n]["x"])
+            assert G2.nodes[n]["y"] == pytest.approx(G.nodes[n]["y"])

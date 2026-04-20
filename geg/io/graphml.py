@@ -6,12 +6,34 @@ Format-to-format conversion (including `graphml_to_geg`,
 """
 
 import xml.etree.ElementTree as ET
+from typing import Optional
 from xml.dom import minidom
 
 import networkx as nx
 
 GRAPHML_NS = "http://graphml.graphdrawing.org/xmlns"
 YED_NS = "http://www.yworks.com/xml/graphml"
+
+
+def _file_is_yed_authored(filename: str) -> bool:
+    """Detect whether a GraphML file was emitted by yEd.
+
+    yEd writes a `<!--Created by yEd ...-->` comment and declares the
+    `xmlns:yed="http://www.yworks.com/xml/yed/3"` namespace on the root.
+    Either marker is sufficient; we scan the prologue so we don't pay for
+    parsing the whole file a second time.
+    """
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            for _ in range(40):
+                line = f.readline()
+                if not line:
+                    break
+                if "xmlns:yed=" in line or "Created by yEd" in line:
+                    return True
+    except OSError:
+        pass
+    return False
 
 
 def _find_yfiles_keys(root):
@@ -26,16 +48,40 @@ def _find_yfiles_keys(root):
     return node_key, edge_key
 
 
-def read_graphml(filename: str) -> nx.Graph:
+def read_graphml(
+    filename: str,
+    yed_corner_anchor: Optional[bool] = None,
+) -> nx.Graph:
     """Read a yEd-flavoured GraphML drawing into a NetworkX graph.
 
     Extracts per-node geometry (x, y, width, height), fill colour, shape, and
     label (when present). Extracts per-edge polyline bends, line-style colour
     and width, and label. Missing optional attributes default sensibly rather
     than raising.
+
+    yEd-origin quirk
+    ----------------
+    yEd stores node `x`/`y` as the *top-left corner* of the node's bounding
+    box. Every other source — including our own `write_gml`, the `.gml` side
+    of yEd's own export, and hand-written GraphML — treats `x`/`y` as the
+    *centre*. Edge bends are always in absolute drawing coordinates, so if
+    the top-left convention is kept, bend points land in the wrong place
+    relative to the node and orthogonal L-shaped routings come out diagonal.
+
+    `yed_corner_anchor` controls whether to shift x,y by (width/2, height/2)
+    after reading:
+
+        - `None` (default): auto-detect from the file's prologue (presence
+          of the `xmlns:yed` namespace or a `<!--Created by yEd-->` comment).
+        - `True`:  always shift — force yEd-style interpretation.
+        - `False`: never shift — treat x,y as centre (our hand-written /
+          non-yEd convention).
     """
     tree = ET.parse(filename)
     root = tree.getroot()
+
+    if yed_corner_anchor is None:
+        yed_corner_anchor = _file_is_yed_authored(filename)
 
     node_key, edge_key = _find_yfiles_keys(root)
 
@@ -77,6 +123,14 @@ def read_graphml(filename: str) -> nx.Graph:
                     elif tag == f"{{{YED_NS}}}NodeLabel":
                         if elm.text and elm.text.strip():
                             attrs["label"] = elm.text.strip()
+        if yed_corner_anchor and "x" in attrs and "y" in attrs:
+            # yEd stores (x, y) as the top-left corner of the bounding box;
+            # shift to the node centre so bends (which are in absolute
+            # drawing coordinates) line up correctly.
+            if "width" in attrs:
+                attrs["x"] += attrs["width"] / 2.0
+            if "height" in attrs:
+                attrs["y"] += attrs["height"] / 2.0
         G.add_node(node.get("id"), **attrs)
 
     for edge in root.findall(f".//{{{GRAPHML_NS}}}edge"):
@@ -115,19 +169,32 @@ def read_graphml(filename: str) -> nx.Graph:
     return G
 
 
-def write_graphml(G: nx.Graph, filename: str, gml_format: bool = False) -> None:
+def write_graphml(
+    G: nx.Graph,
+    filename: str,
+    gml_format: bool = False,
+    yed_corner_anchor: bool = False,
+) -> None:
     """Write a NetworkX graph to a yEd-flavoured GraphML file.
 
     Node attributes recognised on output: `shape` (defaults to "ellipse"),
     `label` (defaults to empty), `colour`/`color` (defaults to "#FFCC00"),
     `width`/`height` (defaults to 30), `x`/`y` (via `graphics` dict if
     `gml_format=True`, else directly). Edge bends use the `bends` attribute.
+
+    Set `yed_corner_anchor=True` to emit a file that matches yEd's own
+    convention — `x`/`y` shifted to the top-left corner of each node's
+    bounding box — and to declare the `yed` namespace so our reader's
+    auto-detect picks it up. The default keeps centre-anchored coordinates
+    and omits the yed namespace, which makes library round-trips (write →
+    read) an identity.
     """
     doc = minidom.Document()
     root = doc.createElement("graphml")
     root.setAttribute("xmlns", GRAPHML_NS)
     root.setAttribute("xmlns:y", YED_NS)
-    root.setAttribute("xmlns:yed", "http://www.yworks.com/xml/yed/3")
+    if yed_corner_anchor:
+        root.setAttribute("xmlns:yed", "http://www.yworks.com/xml/yed/3")
     doc.appendChild(root)
 
     for key_id, yfiles_type, scope in [
@@ -165,17 +232,24 @@ def write_graphml(G: nx.Graph, filename: str, gml_format: bool = False) -> None:
         )
         shape_element.appendChild(fill)
 
+        w = float(attrs.get("width", 30.0))
+        h = float(attrs.get("height", 30.0))
         geometry = doc.createElement("y:Geometry")
-        geometry.setAttribute("height", str(attrs.get("height", 30.0)))
-        geometry.setAttribute("width", str(attrs.get("width", 30.0)))
+        geometry.setAttribute("height", str(h))
+        geometry.setAttribute("width", str(w))
         if gml_format:
             gx = float(attrs.get("graphics", {}).get("x", 0)) - 15
             gy = float(attrs.get("graphics", {}).get("y", 0)) - 15
             geometry.setAttribute("x", str(gx))
             geometry.setAttribute("y", str(gy))
         else:
-            geometry.setAttribute("x", str(attrs.get("x", 0)))
-            geometry.setAttribute("y", str(attrs.get("y", 0)))
+            x = float(attrs.get("x", 0))
+            y = float(attrs.get("y", 0))
+            if yed_corner_anchor:
+                x -= w / 2.0
+                y -= h / 2.0
+            geometry.setAttribute("x", str(x))
+            geometry.setAttribute("y", str(y))
         shape_element.appendChild(geometry)
 
         shape_node = doc.createElement("y:Shape")
