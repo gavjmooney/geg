@@ -11,11 +11,11 @@ This file catalogues bugs, numerical red flags, definitional ambiguities, and op
 
 ## Confirmed bugs / spec mismatches
 
-### ASP-1 — Aspect Ratio returns 0 for degenerate bounding box
-- **Where:** `geg/aspect_ratio.py:24` (approximately; `width <= 0 or height <= 0` branch returns `0.0`).
-- **What:** Paper §3.2 defines `Asp(D) = 1` when `h(D) = 0` or `w(D) = 0`. Current code returns `0.0` (worst) in that case.
-- **Fix direction:** Return `1.0` in the degenerate branch, matching the spec.
-- **TVCG-impact:** unknown — would only affect drawings with a fully-collinear bounding box. Likely rare in the TVCG dataset; to be measured against fixtures.
+### ASP-1 — Aspect Ratio returns 0 for degenerate bounding box [FIXED]
+- **Where:** `geg/aspect_ratio.py:24` (approximately; `width <= 0 or height <= 0` branch returned `0.0`).
+- **What:** Paper §3.2 defines `Asp(D) = 1` when `h(D) = 0` or `w(D) = 0`. Old code returned `0.0`.
+- **Fix:** Return `1.0` in the degenerate branch; also removed dead `<= 0` guard since bbox dimensions are non-negative by construction.
+- **TVCG-impact:** unknown — would only affect drawings with a fully-collinear bounding box, likely rare in the TVCG dataset. Measure against fixtures during Phase 4.
 
 ### ELD-1 — Division by zero if average edge length is 0
 - **Where:** `geg/edge_length_deviation.py:75` (approximately).

@@ -1,26 +1,28 @@
-from . import geg_parser
 import networkx as nx
 
-def aspect_ratio(G: nx.Graph) -> float:
-    """
-    Compute the aspect ratio of the drawing's bounding box.
+from . import geg_parser
 
-    The aspect ratio is defined as min(width/height, height/width), yielding a
-    value in (0, 1], where 1 represents a square bounding box and smaller
-    values indicate more elongated drawings. The bounding box is computed using
-    `geg.get_bounding_box`, which accounts for curve promotion to avoid cutting
-    off curved edges.
+
+def aspect_ratio(G: nx.Graph) -> float:
+    """Aspect-ratio metric in [0, 1].
+
+    Paper §3.2:
+        Asp(D) = 1             if h(D) = 0 or w(D) = 0
+               = h(D) / w(D)   if h(D) <= w(D)
+               = w(D) / h(D)   otherwise
+    where h, w are the height and width of the axis-aligned bounding box of
+    the drawing, computed with curve geometry promoted so that curved edges
+    extend the box.
 
     Args:
-        G: A NetworkX graph with node coordinates 'x' and 'y'.
+        G: NetworkX graph with node attributes 'x', 'y' and optional edge
+           'path' / 'polyline' attributes.
 
     Returns:
-        A float in [0, 1], or 0.0 if width or height is non-positive.
+        Float in [0, 1], 1 = square bounding box (or degenerate 1D/0D drawing).
     """
-    # Get width and height of bounding box
-    min_x, min_y, max_x, max_y = geg_parser.get_bounding_box(G) # geg handles curve promotion
+    min_x, min_y, max_x, max_y = geg_parser.get_bounding_box(G)
     w, h = max_x - min_x, max_y - min_y
-    if w <= 0 or h <= 0:
-        return 0.0
-    
-    return min(w/h, h/w)
+    if w == 0 or h == 0:
+        return 1.0
+    return h / w if h <= w else w / h
