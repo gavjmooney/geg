@@ -1,0 +1,81 @@
+{
+    "graph": {
+        "directed": false
+    },
+    "nodes": [
+        {
+            "id": "a",
+            "x": 0.0,
+            "y": 0.0,
+            "position": [
+                0.0,
+                0.0
+            ]
+        },
+        {
+            "id": "b",
+            "x": 1.0,
+            "y": 0.0,
+            "position": [
+                1.0,
+                0.0
+            ]
+        },
+        {
+            "id": "c",
+            "x": 1.0,
+            "y": 1.0,
+            "position": [
+                1.0,
+                1.0
+            ]
+        },
+        {
+            "id": "d",
+            "x": 0.0,
+            "y": 1.0,
+            "position": [
+                0.0,
+                1.0
+            ]
+        }
+    ],
+    "edges": [
+        {
+            "id": "a-b",
+            "source": "a",
+            "target": "b",
+            "path": "M0.0,0.0 L1.0,0.0"
+        },
+        {
+            "id": "a-d",
+            "source": "a",
+            "target": "d",
+            "path": "M0.0,1.0 L0.0,0.0"
+        },
+        {
+            "id": "a-c",
+            "source": "a",
+            "target": "c",
+            "path": "M0.0,0.0 L1.0,1.0"
+        },
+        {
+            "id": "b-c",
+            "source": "b",
+            "target": "c",
+            "path": "M1.0,0.0 L1.0,1.0"
+        },
+        {
+            "id": "b-d",
+            "source": "b",
+            "target": "d",
+            "path": "M1.0,0.0 L0.0,1.0"
+        },
+        {
+            "id": "c-d",
+            "source": "c",
+            "target": "d",
+            "path": "M1.0,1.0 L0.0,1.0"
+        }
+    ]
+}
