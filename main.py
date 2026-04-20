@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""Example usage of the `geg` metrics library.
+
+This script is intentionally self-contained so it can double as the
+tutorial: every library entry point the end-user cares about is exercised
+below. Five subcommands:
+
+    python main.py demo      --input FILE [--output-dir DIR]
+        Load the drawing, print every metric, write a plain SVG, a
+        grid-background SVG, and a GEG JSON copy into `--output-dir`.
+
+    python main.py metrics   --input FILE
+        Print every metric for one file; useful for quick sanity checks.
+
+    python main.py render    --input FILE --output FILE.svg [--grid]
+        Render a drawing to SVG, optionally with the integer-coordinate
+        grid overlay used by the test fixtures.
+
+    python main.py convert   --input SRC --output DST
+        Convert between supported formats. Dispatch is by file extension
+        on both sides: .geg / .graphml / .gml for input, .geg / .graphml /
+        .svg for output.
+
+    python main.py batch     --input-dir DIR --output-csv metrics.csv
+        Walk `DIR` recursively, load every .geg / .graphml / .gml file
+        found, and append one row per file to the CSV. Each row contains
+        the relative path, the detected format, node / edge counts, and
+        every metric value. Failures are logged but never abort the run.
+
+Accepted input formats: `.geg`, `.graphml`, `.gml` (case-insensitive).
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import logging
+import sys
+import warnings
+from pathlib import Path
+from typing import Callable, Dict, Iterable, List, Tuple
+
+import networkx as nx
+
+import geg
+
+
+SUPPORTED_INPUT_EXTENSIONS = {".geg", ".graphml", ".gml"}
+
+# (Name, callable) pairs in the order that CSV columns should appear.
+METRICS: List[Tuple[str, Callable[[nx.Graph], float]]] = [
+    ("angular_resolution_min_angle", geg.angular_resolution_min_angle),
+    ("angular_resolution_avg_angle", geg.angular_resolution_avg_angle),
+    ("aspect_ratio", geg.aspect_ratio),
+    ("crossing_angle", geg.crossing_angle),
+    ("edge_crossings", geg.edge_crossings),
+    ("edge_length_deviation", geg.edge_length_deviation),
+    ("edge_orthogonality", geg.edge_orthogonality),
+    ("gabriel_ratio_edges", geg.gabriel_ratio_edges),
+    ("gabriel_ratio_nodes", geg.gabriel_ratio_nodes),
+    ("kruskal_stress", geg.kruskal_stress),
+    ("neighbourhood_preservation", geg.neighbourhood_preservation),
+    ("node_edge_occlusion", geg.node_edge_occlusion),
+    ("node_resolution", geg.node_resolution),
+    ("node_uniformity", geg.node_uniformity),
+]
+METRIC_NAMES: List[str] = [name for name, _ in METRICS]
+
+
+# ---------- Loading ----------
+
+def load_drawing(path: Path) -> nx.Graph:
+    """Load a drawing, dispatching on file extension."""
+    ext = path.suffix.lower()
+    if ext == ".geg":
+        return geg.read_geg(str(path))
+    if ext == ".graphml":
+        return geg.graphml_to_geg(str(path))
+    if ext == ".gml":
+        return geg.gml_to_geg(str(path))
+    raise ValueError(f"Unsupported input extension {ext!r} for {path}")
+
+
+def find_drawings(root: Path) -> Iterable[Path]:
+    """Yield every file under `root` (recursively) with a supported
+    extension. If `root` is a file, yield it directly when supported.
+    """
+    if root.is_file():
+        if root.suffix.lower() in SUPPORTED_INPUT_EXTENSIONS:
+            yield root
+        return
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and path.suffix.lower() in SUPPORTED_INPUT_EXTENSIONS:
+            yield path
+
+
+# ---------- Metrics ----------
+
+def compute_metrics(G: nx.Graph) -> Dict[str, float]:
+    """Compute every metric on `G`. Any per-metric exception becomes NaN
+    so one bad metric never kills the rest of the row."""
+    out: Dict[str, float] = {}
+    for name, fn in METRICS:
+        try:
+            out[name] = float(fn(G))
+        except Exception as exc:  # narrow: keep the rest of the row alive
+            logging.warning("metric %s failed: %s", name, exc)
+            out[name] = float("nan")
+    return out
+
+
+# ---------- Subcommands ----------
+
+def cmd_demo(args: argparse.Namespace) -> None:
+    """Exercise the whole library on one file: load, metrics, SVGs, GEG save."""
+    src = Path(args.input)
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading {src}")
+    G = load_drawing(src)
+    print(f"  {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    print(f"  directed={isinstance(G, (nx.DiGraph, nx.MultiDiGraph))}  "
+          f"multigraph={isinstance(G, (nx.MultiGraph, nx.MultiDiGraph))}")
+
+    print("\nMetrics")
+    metrics = compute_metrics(G)
+    width = max(len(n) for n in METRIC_NAMES)
+    for name in METRIC_NAMES:
+        print(f"  {name:<{width}}  {metrics[name]:.6f}")
+
+    print("\nRendering SVGs")
+    plain = out_dir / f"{src.stem}.svg"
+    grid = out_dir / f"{src.stem}_grid.svg"
+    geg.to_svg(G, str(plain))
+    geg.to_svg(G, str(grid), grid=True)
+    print(f"  plain -> {plain}")
+    print(f"  grid  -> {grid}")
+
+    print("\nSaving GEG JSON copy")
+    geg_out = out_dir / f"{src.stem}.geg"
+    geg.write_geg(G, str(geg_out))
+    print(f"  -> {geg_out}")
+
+
+def cmd_metrics(args: argparse.Namespace) -> None:
+    G = load_drawing(Path(args.input))
+    metrics = compute_metrics(G)
+    width = max(len(n) for n in METRIC_NAMES)
+    for name in METRIC_NAMES:
+        print(f"{name:<{width}}  {metrics[name]:.6f}")
+
+
+def cmd_render(args: argparse.Namespace) -> None:
+    G = load_drawing(Path(args.input))
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    geg.to_svg(G, str(out), grid=args.grid, scale=args.scale, margin=args.margin)
+    print(f"Wrote {out}")
+
+
+def cmd_convert(args: argparse.Namespace) -> None:
+    G = load_drawing(Path(args.input))
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    ext = out.suffix.lower()
+    if ext == ".geg":
+        geg.write_geg(G, str(out))
+    elif ext == ".graphml":
+        geg.write_graphml(G, str(out))
+    elif ext == ".svg":
+        geg.to_svg(G, str(out), grid=args.grid)
+    else:
+        raise ValueError(f"Unsupported output extension {ext!r}")
+    print(f"Wrote {out}")
+
+
+def cmd_batch(args: argparse.Namespace) -> None:
+    root = Path(args.input_dir)
+    if not root.exists():
+        sys.exit(f"input-dir does not exist: {root}")
+
+    out_csv = Path(args.output_csv)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+
+    # Suppress deprecation warnings from the library (e.g. curved_edge_
+    # orthogonality is aliased to edge_orthogonality) so stdout stays clean.
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+    header = ["file", "format", "n_nodes", "n_edges"] + METRIC_NAMES
+    ok = fail = 0
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+
+        for path in find_drawings(root):
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                rel = path
+            try:
+                G = load_drawing(path)
+                metrics = compute_metrics(G)
+                writer.writerow(
+                    [str(rel), path.suffix.lstrip(".").lower(),
+                     G.number_of_nodes(), G.number_of_edges()]
+                    + [f"{metrics[n]:.9g}" for n in METRIC_NAMES]
+                )
+                ok += 1
+                print(f"[ok]   {rel}")
+            except Exception as exc:
+                fail += 1
+                writer.writerow(
+                    [str(rel), path.suffix.lstrip(".").lower(), "", ""]
+                    + ["" for _ in METRIC_NAMES]
+                )
+                logging.error("[fail] %s: %s", rel, exc)
+
+    print(f"\nWrote {out_csv}  ({ok} ok, {fail} failed)")
+
+
+# ---------- CLI wiring ----------
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Example usage of the geg metrics library.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Accepted input formats: .geg, .graphml, .gml",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    p_demo = sub.add_parser("demo", help="Exercise every library feature on one file.")
+    p_demo.add_argument("--input", required=True)
+    p_demo.add_argument("--output-dir", default="demo_out")
+    p_demo.set_defaults(func=cmd_demo)
+
+    p_metrics = sub.add_parser("metrics", help="Print metrics for one file.")
+    p_metrics.add_argument("--input", required=True)
+    p_metrics.set_defaults(func=cmd_metrics)
+
+    p_batch = sub.add_parser(
+        "batch",
+        help="Recursively scan a directory and write per-file metrics to CSV.",
+    )
+    p_batch.add_argument("--input-dir", required=True)
+    p_batch.add_argument("--output-csv", required=True)
+    p_batch.set_defaults(func=cmd_batch)
+
+    p_convert = sub.add_parser(
+        "convert",
+        help="Convert between formats (.geg / .graphml / .svg output).",
+    )
+    p_convert.add_argument("--input", required=True)
+    p_convert.add_argument("--output", required=True)
+    p_convert.add_argument(
+        "--grid",
+        action="store_true",
+        help="SVG only: draw integer-coordinate grid background.",
+    )
+    p_convert.set_defaults(func=cmd_convert)
+
+    p_render = sub.add_parser("render", help="Render a drawing to SVG.")
+    p_render.add_argument("--input", required=True)
+    p_render.add_argument("--output", required=True)
+    p_render.add_argument("--grid", action="store_true")
+    p_render.add_argument("--scale", type=float, default=50.0,
+                           help="Pixels per GEG unit (default 50).")
+    p_render.add_argument("--margin", type=float, default=50.0,
+                           help="Margin around the drawing, in pixels (default 50).")
+    p_render.set_defaults(func=cmd_render)
+
+    return p
+
+
+def main(argv: List[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
