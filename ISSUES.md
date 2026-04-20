@@ -1,88 +1,83 @@
 # Known Issues and Open Design Questions
 
-This file catalogues bugs, numerical red flags, definitional ambiguities, and open design questions discovered during the `dev/metrics-refactor-tdd` audit. Each metric-bug entry follows the format:
+Catalogue of bugs, numerical red flags, definitional ambiguities, and open
+design questions discovered during the `dev/metrics-refactor-tdd` audit
+(Phases 1–4). Issue format:
 
-> **Where:** `path/to/file.py:line`  
-> **What:** description of the bug or mismatch  
-> **Fix direction:** one-line proposal  
-> **TVCG-impact:** whether the fix would change metric values for drawings in the published Mooney et al. (TVCG) dataset (`yes` / `no` / `unknown`)
+> **Where:** `path/to/file.py:line`
+> **What:** description
+> **Fix direction:** one-line proposal (or "Fix:" if already resolved)
+> **TVCG-impact:** whether the change alters metric values for the published Mooney et al. (TVCG) dataset (`yes` / `no` / `unknown`)
+
+Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`.
 
 ---
 
 ## Confirmed bugs / spec mismatches
 
-### ASP-1 — Aspect Ratio returns 0 for degenerate bounding box [FIXED]
-- **Where:** `geg/aspect_ratio.py:24` (approximately; `width <= 0 or height <= 0` branch returned `0.0`).
-- **What:** Paper §3.2 defines `Asp(D) = 1` when `h(D) = 0` or `w(D) = 0`. Old code returned `0.0`.
-- **Fix:** Return `1.0` in the degenerate branch; also removed dead `<= 0` guard since bbox dimensions are non-negative by construction.
-- **TVCG-impact:** unknown — would only affect drawings with a fully-collinear bounding box, likely rare in the TVCG dataset. Measure against fixtures during Phase 4.
+### ASP-1 — Aspect Ratio returned 0 for degenerate bounding box  [FIXED]
+- **Where:** `geg/aspect_ratio.py` (old `width <= 0 or height <= 0` branch).
+- **What:** Paper §3.2 defines `Asp(D) = 1` when `h(D) = 0` or `w(D) = 0`. The old code returned `0.0`.
+- **Fix:** Return `1.0` in the degenerate branch; also removed the dead `<= 0` guard since bbox dimensions are non-negative by construction.
+- **TVCG-impact:** **unknown → near-zero expected.** See `METRIC_DELTAS.md`. Triggered on 3 of 11 fixtures; for the TVCG corpus this requires all nodes collinear along one axis, which is measure-zero for continuous layouts and essentially impossible for the reported algorithms on graphs of n ≥ 3. Worth empirically diffing the Asp column on the real dataset for full confidence.
 
-### ELD-1 — Division by zero if average edge length is 0 [FIXED]
-- **Where:** `geg/edge_length_deviation.py:75` (old).
-- **What:** When all edges have length 0 (coincident endpoints), `get_average_edge_length` returned 0 and the metric divided by it.
-- **Fix:** Guard the `ideal == 0` case; return 1.0 (paper's "same length" condition holds vacuously). Also changed the m=0 (edgeless) return from 0.0 → 1.0 for consistency. Migrated to canonical helpers (`_geometry.distance`, `_paths.parse_path`).
-- **TVCG-impact:** no — TVCG drawings do not contain zero-length edges, and have m>0. Plus, the m=0 code path was unreachable in TVCG.
+### ELD-1 — Division by zero when average edge length is 0  [FIXED]
+- **Where:** `geg/edge_length_deviation.py` (old line 75).
+- **What:** When all edges had length 0 (coincident endpoints), `get_average_edge_length` returned 0 and the metric divided by it.
+- **Fix:** Guarded `ideal == 0` (return 1.0 — paper's "same length" condition holds vacuously). Also changed the m=0 (edgeless) return from 0.0 → 1.0 for consistency with the "1 = best" convention. Migrated to canonical helpers (`_geometry.distance`, `_paths.parse_path`).
+- **TVCG-impact:** **no.** TVCG drawings have no zero-length edges and m > 0.
 
-### EC-1 — Debug `print()` calls in production path [FIXED]
-- **Where:** `geg/edge_crossings.py:82,87` (old, in `edge_crossings_bezier`).
-- **What:** Stray debug prints left in library code.
+### EC-1 — Debug `print()` calls in production path  [FIXED]
+- **Where:** `geg/edge_crossings.py` (old lines 82, 87 in `edge_crossings_bezier`).
+- **What:** Stray debug prints and progress counter left in library code.
 - **Fix:** Removed.
-- **TVCG-impact:** no (output only; `edge_crossings_bezier` was experimental anyway).
+- **TVCG-impact:** **no** — output only; `edge_crossings_bezier` was experimental.
 
-### PG-1 — Dead inline test code in `parse_graph.py`
-- **Where:** `geg/parse_graph.py:226–327` (approximately).
-- **What:** `test_graph_read_write()` and related inline test routines that are never called.
-- **Fix direction:** Move to `tests/` as real pytest tests or delete.
-- **TVCG-impact:** no.
+### PG-1 — Dead inline test / commented-out scratch in `parse_graph.py`  [FIXED]
+- **Where:** `geg/parse_graph.py` lines 226–328 (old).
+- **What:** `test_graph_read_write()` referencing non-existent files, plus a block of commented-out scratch code.
+- **Fix:** Deleted. Kept the two useful converter utilities (`convert_gml_to_graphml`, `convert_graphml_to_gml`).
+- **TVCG-impact:** **no.**
 
 ---
 
 ## Open design questions
 
-### DQ-1 — Disconnected-graph handling per metric
-- **Context:** Paper §3.3 specifies weighted-sum-by-convex-hull-area across components for KSM and NP, notes AR is locally defined so unaffected, and warns that a weighted-sum for Edge Crossings would be misleading (ignores inter-component crossings).
-- **Open question:** What should each of the remaining metrics do for disconnected drawings? Some are naturally unaffected (AR, NR min/max over all pairs), some likely want area-weighting, some may want a different aggregation. Decide per metric and document in the metric module.
-- **Action:** Address during Phase 2 TDD. Each metric gets an explicit design note in its module docstring stating its disconnected-graph behaviour.
-- **Progress:**
-  - [x] KSM — weighted sum by component convex-hull area (paper §3.3). Fixed.
-  - [x] NP — weighted sum by component convex-hull area (paper §3.3). Fixed.
-  - [x] AR — locally defined per vertex (paper §3.3, explicit). Full-graph: correct.
-  - [x] Asp — full-drawing bbox; components share the canvas. Full-graph: correct.
-  - [x] CA — averaged over the crossing set `X(D)` (paper §3.3: per-component would miss inter-component crossings). Full-graph: correct.
-  - [x] EC — same reasoning as CA (paper §3.3). Full-graph: correct.
-  - [x] ELD — edge-length uniformity is about the set of edges; partitioning by component would conflate per-component scales. Full-graph: correct.
-  - [x] EO — per-edge local metric; component-agnostic. Full-graph: correct.
-  - [x] GR — another component's node inside your edge's diameter disk is a real visual-clutter violation. Full-graph: correct.
-  - [x] NR — min/max over all pair distances; layout geometry, not topology. Full-graph: correct.
-  - [x] NU — grid uniformity over the full bbox. Full-graph: correct.
+### DQ-1 — Disconnected-graph handling per metric  [RESOLVED]
+Paper §3.3 specifies weighted-sum-by-convex-hull-area for KSM and NP, and warns against per-component aggregation for EC.
+
+| Metric | Behaviour | Source |
+|---|---|---|
+| KSM | Weighted sum by per-component convex-hull area | Paper §3.3 (explicit) |
+| NP  | Weighted sum by per-component convex-hull area | Paper §3.3 (explicit) |
+| AR  | Full-graph (locally defined per vertex) | Paper §3.3 (explicit) |
+| Asp | Full-graph (bbox of entire drawing) | Gavin's call: components share the canvas |
+| CA  | Full-graph (all crossings in `X(D)`) | Paper §3.3: per-component would miss inter-component crossings |
+| EC  | Full-graph | Same reasoning as CA |
+| ELD | Full-graph | Edge-length uniformity is about the set of edges; partitioning would conflate per-component scales |
+| EO  | Full-graph (per-edge local) | Component-agnostic by construction |
+| GR  | Full-graph | Another component's node inside your edge's disk is a real visual-clutter violation |
+| NR  | Full-graph | min/max over all pair distances is layout geometry, not topology |
+| NU  | Full-graph | Grid uniformity is over the full bbox |
 
 ### DQ-2 — Curved / Bézier edge handling per metric
-- **Context:** `curves_promotion` explodes curves into polyline segments. Which metrics should run on the promoted graph vs. the original varies (e.g. ELD uses segment lengths; EC is defined pre-crosses-promotion).
-- **Open question:** For each metric, is the authoritative behaviour documented unambiguously in the paper, or is there an under-specification (especially for Bézier curves, which the paper's Figure 1 covers but formulas rarely mention explicitly)?
-- **Action:** Address per metric in Phase 2. Flag each under-specification here.
+- **Context:** `curves_promotion` explodes curves into polyline segments; `_paths.flatten_path_to_polyline` samples paths into per-edge polylines. Which metrics operate on promoted vs original geometry varies.
+- **Status per metric:**
+  - **AR:** uses the vertex-side tangent of each incident edge's path — handles Bezier correctly (paper §3.2 explicit).
+  - **CA / EC:** linearise each path into segments with `samples_per_curve` (default 100) and tolerance `min_angle_tol` (default 2.5°), per paper §3.2.
+  - **ELD:** uses `svgpathtools` arc length for curves (numerical integration), not polyline approximation. Matches paper.
+  - **EO:** uses `_paths.edge_polyline` (polyline-sampled) with length-weighted segment deviation per paper §3.2 eq. (5)-(6). `edge_orthogonality` now unified (was straight-only before Phase 2).
+  - **GR, NR, NU, KSM, NP, Asp:** node-only metrics; curves irrelevant.
+- **Remaining ambiguity:** `samples_per_curve` default of 100 for EC is a paper-prescribed value but the user can override. No hard decision owed here.
 
-### DQ-3 — Gabriel Ratio status
-- **Context:** Paper §3.2 excludes Gabriel Ratio ("not applicable for drawings with curves"). Gavin has decided to keep it in the library as a non-canonical metric since it still applies to straight-line drawings.
-- **Action:** Document as non-canonical in the module docstring; ensure it is callable but not in the default "paper metrics" set. Consider a `geg.canonical_metrics` convenience helper that excludes it.
+### DQ-3 — Gabriel Ratio status  [RESOLVED]
+- **Decision:** Kept in the library as non-canonical (Gavin). Paper §3.2 excludes GR because it is not applicable to drawings with curves, but the metric is still defined and useful for straight-line drawings.
+- **Implementation:** `gabriel_ratio.py` module docstring states this. Both `gabriel_ratio_edges` and `gabriel_ratio_nodes` ignore edge `path` attrs and operate on node positions only.
 
 ---
 
-## Numerical red flags to verify
+## Remaining follow-ups (low priority)
 
-_(entries added during Phase 2 as each metric is audited)_
-
----
-
-## Helper duplication clusters
-
-Canonical helpers now live in `geg/_geometry.py` and `geg/_paths.py` (added in Phase 1). The clusters below are still present in the existing metric / parser modules — each will be removed as Phase 2 refactors that module onto the canonical helpers.
-
-- [x] ~~Angle computation reimplemented in `edge_orthogonality.py`~~ — now uses per-segment paper formula directly.
-- [x] ~~Angle computation duplicated between `angular_resolution_min_angle` and `angular_resolution_avg_angle`~~ — consolidated into `_incident_edge_angles` + `_gaps_around_vertex` helpers.
-- [x] ~~`_squared_distance` in `gabriel_ratio.py`~~ — now imports from `_geometry`.
-- [x] ~~`bboxes_intersect`, `check_intersection`, `flatten_path_to_lines` in `edge_crossings.py`~~ — removed; `edge_crossings` now uses `_geometry.bboxes_intersect`, `_geometry.segment_intersection`, and `_paths.flatten_path_to_segments`.
-- [ ] `edge_crossings_bezier` still reimplements acute-angle-between-vectors inline (using svgpathtools complex-number tangents). Low priority since it's experimental.
-- [ ] Path linearisation in `geg_parser.approximate_edge_polyline` and `edge_crossings.flatten_path_to_lines` — replace with `_paths.flatten_path_to_polyline` / `_paths.flatten_path_to_segments` / `_paths.edge_polyline`.
-- [ ] `_squared_distance` in `gabriel_ratio.py` duplicates `_geometry.squared_distance`.
-- [ ] Segment-intersection / bbox-overlap helpers in `edge_crossings.py` (`bboxes_intersect`, `check_intersection`) — replace with `_geometry.bboxes_intersect` / `_geometry.segment_intersection`.
-- [ ] Multiple direct `svgpathtools.parse_path` call-sites — route through `_paths.parse_path` (or one of the flatten helpers). Updated: `node_resolution` no longer uses `math.hypot` directly (uses `_geometry.distance`).
+- [ ] `edge_crossings_bezier` still reimplements acute-angle-between-vectors inline via svgpathtools complex-number tangents. It's the experimental / slow variant, so not urgent. Replacing with `_geometry.angle_between` would require adapting to complex-number inputs or converting first.
+- [ ] `geg_parser.approximate_edge_polyline` still lives alongside `_paths.flatten_path_to_polyline`. Both are used (AR calls `approximate_edge_polyline` indirectly via its own SVG-path traversal; the new helpers are fine). Could consolidate further but no metric impact.
+- [ ] New metrics (the "1–2 additions" flagged in `library_update_brief.md`) are not yet scaffolded — waiting on Gavin's definitions.

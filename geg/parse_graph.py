@@ -223,106 +223,16 @@ def write_graphml(G, filename, gml_format=False):
         f.write(doc.toprettyxml(indent='    '))
 
 
-def test_graph_read_write():
-    G = read_graphml("test.graphml")
-
-    write_graphml(G, "wtest.graphml")
-
-    H = read_graphml("wtest.graphml")
-
-    G_nodes = []
-    G_edges = []
-
-    H_nodes = []
-    H_edges = []
-
-    print(G.nodes(data=True) == H.nodes(data=True))
-
-    for n in G.nodes(data=True):
-        G_nodes.append(n)
-
-    for e in G.edges(data=True):
-        G_edges.append(e)
-        
-    for n in H.nodes(data=True):
-        H_nodes.append(n)
-
-    for e in H.edges(data=True):
-        H_edges.append(e)
-
-    print(G_nodes == H_nodes)
-    print(G_edges == H_edges)
-
-    print(len(G_nodes) == len(H_nodes))
-    print(len(G_edges) == len(H_edges))
-
-    for i in range(len(G_nodes)):
-        print(G_nodes[i])
-        print(H_nodes[i])
-        print()
-
-
 def convert_gml_to_graphml(fname_gml, fname_graphml):
     G = nx.read_gml(fname_gml, label=None)
     write_graphml(G, fname_graphml, True)
 
+
 def convert_graphml_to_gml(fname_graphml, fname_gml, with_nx=False):
-    """ IMPORTANT: DOES NOT PRESERVE NODE POSITIONS OR EDGE ATTRIBUTES! USE ONLY ON GRAPHS, NOT DRAWINGS."""
+    """Convert GraphML to GML. Does NOT preserve node positions or edge
+    attributes; use only on graphs, not drawings."""
     if with_nx:
         G = nx.read_graphml(fname_graphml)
     else:
         G = read_graphml(fname_graphml)
     nx.write_gml(G, fname_gml)
-
-
-# G = read_graphml(".new_output.graphml")
-
-# write_graphml(G, "hola_out.graphml")
-
-# H = read_graphml("hola_out.graphml")
-
-# G = nx.read_gml(".new_output.gml", label=None)
-
-# H = read_graphml("hola_out.graphml")
-
-# G_nodes = []
-# G_edges = []
-
-# H_nodes = []
-# H_edges = []
-
-# for n in G.nodes(data=True):
-#     G_nodes.append(n)
-
-# for e in G.edges(data=True):
-#     G_edges.append(e)
-    
-# for n in H.nodes(data=True):
-#     H_nodes.append(n)
-
-# for e in H.edges(data=True):
-#     H_edges.append(e)
-
-# print(G_nodes == H_nodes)
-# print(G_edges == H_edges)
-
-# print(len(G_nodes) == len(H_nodes))
-# print(len(G_edges) == len(H_edges))
-
-# for i in range(len(G_nodes)):
-#     print(G_nodes[i])
-#     print(H_nodes[i])
-#     print()
-
-# for i in range(len(G_edges)):
-#     print(G_edges[i])
-#     print(H_edges[i])
-#     print()
-
-
-# G = nx.read_gml(".new_output.gml", label=None)
-
-# write_graphml(G, "wgmltest.graphml", True)
-
-#convert_graphml_to_gml("test.graphml", "test.gml")
-#convert_gml_to_graphml("hola_in.gml", "hola_out.graphml")
