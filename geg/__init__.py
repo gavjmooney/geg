@@ -27,6 +27,9 @@ from .node_edge_occlusion import node_edge_occlusion
 from .node_resolution import node_resolution
 from .node_uniformity import node_uniformity
 
+from . import graph_properties
+from .graph_properties import compute_properties
+
 __all__ = [
     # format readers / writers
     "read_geg","write_geg",
@@ -51,4 +54,6 @@ __all__ = [
     "gabriel_ratio_edges","gabriel_ratio_nodes","kruskal_stress",
     "neighbourhood_preservation","node_edge_occlusion",
     "node_resolution","node_uniformity",
+    # graph properties (topology, layout-independent)
+    "graph_properties","compute_properties",
 ]

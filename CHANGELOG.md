@@ -8,6 +8,15 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Added
 
+- **`geg.graph_properties` module** — topological descriptors of the graph, independent of the layout. 26 properties:
+  - **Basic counts & flags:** `n_nodes`, `n_edges`, `density`, `is_directed`, `is_multigraph`, `n_self_loops`, `n_connected_components`, `is_connected`.
+  - **Degree statistics:** `min_degree`, `max_degree`, `mean_degree`, `degree_std`.
+  - **Structural classes:** `is_tree`, `is_forest`, `is_bipartite`, `is_planar`, `is_dag`, `is_regular`, `is_eulerian`.
+  - **Distances (per-component weighted sum, KSM/NP-style):** `diameter`, `radius`, `avg_shortest_path_length`. Singleton components are skipped; all-singleton graphs return NaN. Directed inputs are reduced to their undirected view for this computation, same as KSM / NP.
+  - **Clustering:** `n_triangles`, `average_clustering`, `transitivity`.
+  - **Assortativity:** `degree_assortativity` (NaN when undefined, e.g. regular graphs).
+  - **Batch entry point:** `compute_properties(G)` returns every property as a dict, catching per-property exceptions into NaN; `PROPERTY_NAMES` pins the ordering.
+  - Re-exported from the top-level package as `geg.graph_properties` and `geg.compute_properties`.
 - **`geg.io.convert` module** centralising every cross-format entry point:
   - **`convert(src, dst, **kwargs)`** — one-liner format swap; both ends detected from the file extension. Forwards kwargs to the destination writer, so e.g. `convert("a.graphml", "a.svg", grid=True)` works. Returns the loaded graph for inspection.
   - **`read_drawing(path)`** — load any supported input format (`.geg` / `.graphml` / `.gml`) as a GEG-canonical NetworkX graph.
