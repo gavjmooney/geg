@@ -69,8 +69,9 @@ _(entries added during Phase 2 as each metric is audited)_
 
 Canonical helpers now live in `geg/_geometry.py` and `geg/_paths.py` (added in Phase 1). The clusters below are still present in the existing metric / parser modules — each will be removed as Phase 2 refactors that module onto the canonical helpers.
 
-- [x] ~~Angle computation reimplemented in `edge_orthogonality.py`~~ — now uses per-segment paper formula directly; uses `_geometry.distance` for segment lengths and `_paths.edge_polyline` for polyline extraction.
-- [ ] Angle computation still reimplemented in `angular_resolution.py`, `edge_crossings.py` — replace with `_geometry.angle_between` / `_geometry.acute_angle_between`.
+- [x] ~~Angle computation reimplemented in `edge_orthogonality.py`~~ — now uses per-segment paper formula directly.
+- [x] ~~Angle computation duplicated between `angular_resolution_min_angle` and `angular_resolution_avg_angle`~~ — consolidated into `_incident_edge_angles` + `_gaps_around_vertex` helpers.
+- [ ] Angle computation still reimplemented in `edge_crossings.py` (the Bezier variant) — replace with `_geometry.angle_between`.
 - [ ] Path linearisation in `geg_parser.approximate_edge_polyline` and `edge_crossings.flatten_path_to_lines` — replace with `_paths.flatten_path_to_polyline` / `_paths.flatten_path_to_segments` / `_paths.edge_polyline`.
 - [ ] `_squared_distance` in `gabriel_ratio.py` duplicates `_geometry.squared_distance`.
 - [ ] Segment-intersection / bbox-overlap helpers in `edge_crossings.py` (`bboxes_intersect`, `check_intersection`) — replace with `_geometry.bboxes_intersect` / `_geometry.segment_intersection`.
