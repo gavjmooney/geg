@@ -46,7 +46,15 @@ This file catalogues bugs, numerical red flags, definitional ambiguities, and op
 - **Progress:**
   - [x] KSM — weighted sum by component convex-hull area (paper §3.3). Fixed.
   - [x] NP — weighted sum by component convex-hull area (paper §3.3). Fixed.
-  - [ ] AR, Asp, CA, EC, ELD, EO, GR, NR, NU — per-metric decision required.
+  - [x] AR — locally defined per vertex (paper §3.3, explicit). Full-graph: correct.
+  - [x] Asp — full-drawing bbox; components share the canvas. Full-graph: correct.
+  - [x] CA — averaged over the crossing set `X(D)` (paper §3.3: per-component would miss inter-component crossings). Full-graph: correct.
+  - [x] EC — same reasoning as CA (paper §3.3). Full-graph: correct.
+  - [x] ELD — edge-length uniformity is about the set of edges; partitioning by component would conflate per-component scales. Full-graph: correct.
+  - [x] EO — per-edge local metric; component-agnostic. Full-graph: correct.
+  - [x] GR — another component's node inside your edge's diameter disk is a real visual-clutter violation. Full-graph: correct.
+  - [x] NR — min/max over all pair distances; layout geometry, not topology. Full-graph: correct.
+  - [x] NU — grid uniformity over the full bbox. Full-graph: correct.
 
 ### DQ-2 — Curved / Bézier edge handling per metric
 - **Context:** `curves_promotion` explodes curves into polyline segments. Which metrics should run on the promoted graph vs. the original varies (e.g. ELD uses segment lengths; EC is defined pre-crosses-promotion).

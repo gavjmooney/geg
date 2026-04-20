@@ -16,6 +16,7 @@ Ongoing TDD refactor of the metrics library. Entries below track public-API–af
 ### Changed
 - `edge_orthogonality(G)` is now the unified paper §3.2 eq. (5)-(6) definition: handles straight, polyline, and curved edges via length-weighted segment deviation. Behaviour is unchanged for drawings with only straight edges; for drawings with curved/polyline edges, it now incorporates them (previously it ignored the `path` attribute).
 - `edge_orthogonality(G)` returns 1.0 on edgeless graphs (was 0.0).
+- `to_svg(G, out, ...)`: rewritten. New keyword-only parameters `scale` (pixels per GEG unit; default 50), `grid` (draw faint integer-coordinate grid; default False), `node_radius`, `stroke_width`, `grid_stroke`, `grid_stroke_width`. `margin` is now in pixels. Drawing coordinates are pre-scaled so edge path 'd' attrs in the output use pixel values, not raw GEG coords. Calls to `to_svg(G, out, margin=...)` still work positionally; any call site relying on GEG-unit coords in the output will need to set `scale=1.0` to preserve old behaviour.
 
 ### Deprecated
 - `curved_edge_orthogonality(G, global_segments_N=...)`: emits DeprecationWarning and delegates to `edge_orthogonality`. `global_segments_N` is forwarded as `samples_per_curve`.

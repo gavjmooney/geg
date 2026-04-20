@@ -524,96 +524,157 @@ def get_bounding_box(G: nx.Graph, promote: bool = True) -> Tuple[float, float, f
     min_y, max_y = min(ys), max(ys)
     return min_x, min_y, max_x, max_y
 
-def to_svg(G: nx.Graph, output_file: str, margin: float = 50) -> None:
-    """
-    Render the graph drawing to an SVG file.
+def _scale_path(path_str: str, scale: float) -> str:
+    """Scale numeric coordinates in an SVG path 'd' string by `scale`.
 
-    The viewBox is computed from the curve-promoted geometry to avoid clipping
-    curved edges, while only original nodes and edges from G are drawn.
+    Keeps command letters (M/L/C/Q/S/T/A/H/V/Z, upper and lower) intact and
+    multiplies each numeric literal by `scale`.
+    """
+    pattern = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+
+    def repl(m: re.Match) -> str:
+        return f"{float(m.group(0)) * scale:g}"
+
+    return pattern.sub(repl, path_str)
+
+
+def to_svg(
+    G: nx.Graph,
+    output_file: str,
+    *,
+    margin: float = 50.0,
+    scale: float = 50.0,
+    grid: bool = False,
+    node_radius: float = 10.0,
+    stroke_width: float = 2.0,
+    grid_stroke: str = "#ddd",
+    grid_stroke_width: float = 0.5,
+) -> None:
+    """Render a drawing to SVG in pixel coordinates.
+
+    GEG coordinates are multiplied by `scale` (pixels per GEG unit) so that
+    unit-scale fixtures render at a readable size. `margin` is in pixels and
+    is applied around the (scaled) bounding box of the curve-promoted drawing.
 
     Args:
-        G: The input graph with node coordinates and edge paths.
+        G: NetworkX graph with node 'x'/'y' and optional edge 'path' attrs.
         output_file: Output SVG filename.
-        margin: Padding added around the bounding box.
+        margin: Padding around the bounding box, in pixels.
+        scale: Pixels per GEG unit.
+        grid: If True, draw a faint integer-GEG-coordinate grid behind the
+            drawing. Intended for fixtures that need manual verification.
+        node_radius: Default node radius, in pixels (overridden by per-node
+            'radius' / 'size' attrs).
+        stroke_width: Edge and node outline width, in pixels.
+        grid_stroke: Stroke colour for grid lines.
+        grid_stroke_width: Stroke width for grid lines, in pixels.
     """
-    # Compute bounding box + margin from the promoted graph
-
     min_x, min_y, max_x, max_y = get_bounding_box(G)
 
-    width  = (max_x - min_x) + 2 * margin
-    height = (max_y - min_y) + 2 * margin 
-    viewBox = f"{min_x - margin} {min_y - margin} {width} {height}"
+    # Work in pixel coordinates: scale GEG coords, then add the pixel-margin
+    # around the scaled bbox.
+    sx_min = min_x * scale
+    sy_min = min_y * scale
+    sx_max = max_x * scale
+    sy_max = max_y * scale
+    vb_x = sx_min - margin
+    vb_y = sy_min - margin
+    vb_w = (sx_max - sx_min) + 2 * margin
+    vb_h = (sy_max - sy_min) + 2 * margin
 
-    # Create SVG root
     svg = Element(
-        'svg',
+        "svg",
         xmlns="http://www.w3.org/2000/svg",
         version="1.1",
-        width=str(width),
-        height=str(height),
-        viewBox=viewBox
+        width=str(vb_w),
+        height=str(vb_h),
+        viewBox=f"{vb_x} {vb_y} {vb_w} {vb_h}",
     )
 
-    # Optional: embed a description
-    if 'description' in G.graph:
-        desc = SubElement(svg, 'desc')
-        desc.text = G.graph['description']
+    if "description" in G.graph:
+        desc = SubElement(svg, "desc")
+        desc.text = G.graph["description"]
 
-    # Draw edges from the original G
-    for u, v, attrs in G.edges(data=True):
-        d = attrs.get('path')
-        if not d:
-            x0, y0 = G.nodes[u]['x'], G.nodes[u]['y']
-            x1, y1 = G.nodes[v]['x'], G.nodes[v]['y']
-            d = f"M{x0},{y0} L{x1},{y1}"
-
-        path_elem = SubElement(svg, 'path',
-                               d=d,
-                               fill="none",
-                               stroke=attrs.get('colour', 'black'))
-        if 'id' in attrs:
-            path_elem.set('id', attrs['id'])
-
-    # Draw nodes from the original G
-    for node, attrs in G.nodes(data=True):
-        x, y = attrs['x'], attrs['y']
-        fill  = attrs.get('colour', '#FFFFFF')
-        shape = attrs.get('shape', 'ellipse').lower()
-
-        if shape in ('ellipse', 'circle'):
-            r = attrs.get('radius', 10)
-            node_elem = SubElement(
-                svg, 'ellipse',
-                cx=str(x), cy=str(y),
-                rx=str(r), ry=str(r),
-                fill=fill, stroke="black"
+    # 1. Grid — rendered first so edges/nodes paint on top.
+    if grid:
+        grid_group = SubElement(svg, "g", attrib={"class": "grid"})
+        # Integer x lines spanning the y-range.
+        x_lo = math.ceil(min_x)
+        x_hi = math.floor(max_x)
+        for gx in range(x_lo, x_hi + 1):
+            SubElement(
+                grid_group, "line",
+                x1=str(gx * scale), y1=str(vb_y),
+                x2=str(gx * scale), y2=str(vb_y + vb_h),
+                stroke=grid_stroke, attrib={"stroke-width": str(grid_stroke_width)},
+            )
+        y_lo = math.ceil(min_y)
+        y_hi = math.floor(max_y)
+        for gy in range(y_lo, y_hi + 1):
+            SubElement(
+                grid_group, "line",
+                x1=str(vb_x), y1=str(gy * scale),
+                x2=str(vb_x + vb_w), y2=str(gy * scale),
+                stroke=grid_stroke, attrib={"stroke-width": str(grid_stroke_width)},
             )
 
-        elif shape in ('square', 'rectangle', 'rect'):
-            size = attrs.get('size', 20)
+    # 2. Edges.
+    for u, v, attrs in G.edges(data=True):
+        path_str = attrs.get("path")
+        if path_str:
+            d = _scale_path(path_str, scale)
+        else:
+            x0 = G.nodes[u]["x"] * scale
+            y0 = G.nodes[u]["y"] * scale
+            x1 = G.nodes[v]["x"] * scale
+            y1 = G.nodes[v]["y"] * scale
+            d = f"M{x0:g},{y0:g} L{x1:g},{y1:g}"
+        path_elem = SubElement(
+            svg, "path",
+            d=d,
+            fill="none",
+            stroke=attrs.get("colour", "black"),
+            attrib={"stroke-width": str(stroke_width)},
+        )
+        if "id" in attrs:
+            path_elem.set("id", attrs["id"])
+
+    # 3. Nodes.
+    for node, attrs in G.nodes(data=True):
+        cx = attrs["x"] * scale
+        cy = attrs["y"] * scale
+        fill = attrs.get("colour", "#FFFFFF")
+        shape = attrs.get("shape", "ellipse").lower()
+        if shape in ("ellipse", "circle"):
+            r = attrs.get("radius", node_radius)
+            node_elem = SubElement(
+                svg, "ellipse",
+                cx=str(cx), cy=str(cy), rx=str(r), ry=str(r),
+                fill=fill, stroke="black",
+                attrib={"stroke-width": str(stroke_width)},
+            )
+        elif shape in ("square", "rectangle", "rect"):
+            size = attrs.get("size", node_radius * 2)
             half = size / 2
             node_elem = SubElement(
-                svg, 'rect',
-                x=str(x - half), y=str(y - half),
+                svg, "rect",
+                x=str(cx - half), y=str(cy - half),
                 width=str(size), height=str(size),
-                fill=fill, stroke="black"
+                fill=fill, stroke="black",
+                attrib={"stroke-width": str(stroke_width)},
             )
-
         else:
-            # fallback to a circle
-            r = attrs.get('radius', 10)
             node_elem = SubElement(
-                svg, 'circle',
-                cx=str(x), cy=str(y),
-                r=str(r), fill=fill, stroke="black"
+                svg, "circle",
+                cx=str(cx), cy=str(cy), r=str(node_radius),
+                fill=fill, stroke="black",
+                attrib={"stroke-width": str(stroke_width)},
             )
+        node_elem.set("id", str(node))
 
-        node_elem.set('id', str(node))
-
-    # Pretty‐print + save
-    raw = tostring(svg, 'utf-8')
+    raw = tostring(svg, "utf-8")
     pretty = xml.dom.minidom.parseString(raw).toprettyxml(indent="  ")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(pretty)
 
 def compute_global_scale(G: nx.Graph, target_segments: int = 10) -> float:
