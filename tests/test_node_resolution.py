@@ -34,6 +34,8 @@ class TestDegenerate:
 
 class TestPerfectResolution:
     def test_equilateral_triangle(self):
+        # All three pairwise distances are equal to 1 (equilateral side
+        # length), so min / max = 1 / 1 = 1.
         G = _layout({
             "a": (0.0, 0.0),
             "b": (1.0, 0.0),

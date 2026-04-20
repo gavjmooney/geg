@@ -2,6 +2,13 @@
 
 Paper §3.2 eq. (8): NP = |A ∧ M^k| / |A ∨ M^k|,
 with k = floor(2|E|/|V|) = floor(average degree).
+
+A is the graph adjacency matrix (topological neighbours), M^k is the
+geometric k-nearest-neighbour indicator matrix built from the layout
+coordinates. |X| counts non-zero off-diagonal entries. NP is the Jaccard
+similarity between the two neighbourhood structures — 1 when the k nearest
+neighbours in the layout match the graph neighbours exactly, 0 when
+they share nothing.
 """
 
 import networkx as nx
@@ -24,21 +31,31 @@ class TestDegenerate:
 
 
 class TestPerfectPreservation:
+    """All these layouts are embeddings where the k-NN neighbourhood of
+    each node is exactly its graph-neighbour set → A ∧ K = A = K so the
+    Jaccard similarity is 1."""
+
     def test_two_nodes_one_edge(self):
-        # n=2, avg deg = 1, k = 1. Each node's nearest is the other.
+        # n=2, m=1, avg-deg = 2*1/2 = 1, so k = floor(1) = 1.
+        # Each node's single nearest neighbour is the other node, which is
+        # also its graph-neighbour → A and K are identical 2x2 matrices.
         G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0)})
         G.add_edge("a", "b")
         assert NP(G) == pytest.approx(1.0)
 
     def test_triangle(self):
-        # n=3, avg deg = 2, k = 2. Each node's 2 nearest are the other two.
+        # n=3, m=3, avg-deg = 2, so k = 2. For each node the two nearest
+        # neighbours in the layout are the two *other* nodes — identical
+        # to the graph-adjacency set — so A ≡ K and Jaccard = 1.
         G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (0.5, 0.87)})
         G.add_edges_from([("a", "b"), ("b", "c"), ("c", "a")])
         assert NP(G) == pytest.approx(1.0)
 
     def test_complete_k4_any_layout(self):
-        # K4: every node is adjacent to every other. k = 3 means every node's
-        # 3 nearest are exactly the other three → K matches A perfectly.
+        # K4 has m = 6, n = 4 → avg-deg = 3 → k = 3. Each node's three
+        # nearest neighbours are the other three nodes regardless of how
+        # they're placed (there *are* only three others). So K lists every
+        # off-diagonal entry just like A does. A = K → NP = 1.
         G = _layout({
             "a": (0.0, 0.0), "b": (5.0, 1.0),
             "c": (7.0, -3.0), "d": (2.0, -2.0),

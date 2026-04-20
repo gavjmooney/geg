@@ -51,8 +51,10 @@ class TestEdgesVariant:
         assert gabriel_ratio_edges(G) == 1.0
 
     def test_triangle_with_interior_violation(self):
-        """Single edge a-b of length 4, node c at (2, 0.1) lies inside the
-        disk of edge ab. With only edge ab → 0/1 = 0."""
+        """Edge ab has midpoint (2, 0) and diameter 4 → disk has radius 2.
+        Node c at (2, 0.1) is 0.1 from the midpoint, well inside the disk,
+        so the edge is not Gabriel. With only this one edge, the ratio is
+        (0 Gabriel edges) / (1 edge) = 0."""
         G = _layout({"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.1)})
         G.add_edge("a", "b")
         assert gabriel_ratio_edges(G) == 0.0

@@ -28,14 +28,21 @@ class TestDegenerate:
 
 
 class TestPerfectEmbeddings:
+    """Layouts where Euclidean distances match graph distances exactly (up
+    to a single monotone scaling) — isotonic fit is the identity, sum of
+    squared residuals is 0, KSM = 1 - 0 = 1."""
+
     def test_two_nodes_unit_edge(self):
-        # A-B, unit layout, d = x = 1 → zero stress.
+        # Only pair is (A, B); d = 1, x = 1. Isotonic fit h = 1 trivially,
+        # so the numerator sum((x - h)**2) = 0 and KSM = 1.
         G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0)})
         G.add_edge("a", "b")
         assert kruskal_stress(G) == pytest.approx(1.0)
 
     def test_equilateral_triangle(self):
-        # Triangle with unit graph-distances and unit Euclidean distances.
+        # K3 with unit edges. The three pairs all have d = 1 and x = 1
+        # (equilateral side length is 1), so the (d, x) scatter collapses
+        # to a single point (1, 1) and the isotonic fit is h = x exactly.
         G = _layout({
             "a": (0.0, 0.0),
             "b": (1.0, 0.0),
@@ -45,7 +52,9 @@ class TestPerfectEmbeddings:
         assert kruskal_stress(G) == pytest.approx(1.0)
 
     def test_collinear_path_proportional_layout(self):
-        # A-B-C; layout distances x = [1, 1, 2] match d = [1, 1, 2] exactly.
+        # Path A-B-C laid out on the x-axis with unit spacing. Pairs give
+        # d = [1, 1, 2] and x = [1, 1, 2] — same numbers in the same order,
+        # so isotonic regression returns h = x and residuals are all 0.
         G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (2.0, 0.0)})
         G.add_edges_from([("a", "b"), ("b", "c")])
         assert kruskal_stress(G) == pytest.approx(1.0)
@@ -162,6 +171,13 @@ class TestDirectedGraph:
         """Regression: on a DiGraph, all_pairs_shortest_path_length is
         asymmetric, so naive pairwise lookups hit KeyError. Stress should
         treat the graph as undirected for this computation.
+
+        Undirected view: n1 - n2 - n0 (length-2 path).
+            graph-distance  d = [1, 1, 2]    for (n1,n2), (n2,n0), (n1,n0)
+            Euclidean       x = [400, 400, 400·√2]
+        Pairs at d=1 tie (both x=400, pool mean = 400); pair at d=2 has
+        x=400·√2. h is monotone in d and equals x everywhere, so residuals
+        are 0 and KSM = 1.
         """
         G = nx.DiGraph()
         G.add_node("n0", x=0.0, y=0.0)
@@ -169,7 +185,6 @@ class TestDirectedGraph:
         G.add_node("n2", x=400.0, y=0.0)
         G.add_edge("n1", "n2")  # n0 is a sink under directed semantics
         G.add_edge("n2", "n0")
-        # Path n1 -> n2 -> n0 with perfect right-angle distances; stress = 1.
         assert kruskal_stress(G) == pytest.approx(1.0)
 
     def test_matches_undirected_equivalent(self):

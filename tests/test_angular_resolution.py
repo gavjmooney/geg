@@ -146,3 +146,40 @@ class TestDisconnected:
 
         assert angular_resolution_min_angle(G) == pytest.approx(1.0)
         assert angular_resolution_avg_angle(G) == pytest.approx(1.0)
+
+
+class TestCanonicalAlias:
+    """`geg.angular_resolution` is a callable alias for the paper §3.2
+    eq. (1) min-angle variant, exposed so that `geg.angular_resolution(G)`
+    works exactly like `geg.angular_resolution_min_angle(G)`. The submodule
+    (`geg.angular_resolution.reverse_svg_path` etc.) remains importable."""
+
+    def test_alias_is_same_function(self):
+        import geg
+        assert geg.angular_resolution is geg.angular_resolution_min_angle
+
+    def test_alias_returns_min_angle_value(self):
+        # T-shape: mindgap = 90°, ideal = 120°, shortfall = 30/120 = 0.25 →
+        # min-angle AR = 0.75. avg-angle AR would be 2/3 (≠ 0.75), so this
+        # test would fail if the alias pointed at the avg variant.
+        import geg
+        coords = {
+            "c": (0.0, 0.0),
+            "east": (1.0, 0.0),
+            "north": (0.0, -1.0),
+            "west": (-1.0, 0.0),
+        }
+        G = _layout(coords)
+        for leaf in ("east", "north", "west"):
+            G.add_edge("c", leaf, path=_straight("c", leaf, coords))
+        assert geg.angular_resolution(G) == pytest.approx(0.75)
+
+    def test_submodule_still_importable(self):
+        """Package-attribute rebinding must not break
+        `from geg.angular_resolution import X` (resolved via sys.modules)."""
+        from geg.angular_resolution import (
+            reverse_svg_path,
+            orient_svg_path_for_node,
+        )
+        assert callable(reverse_svg_path)
+        assert callable(orient_svg_path_for_node)

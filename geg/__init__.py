@@ -16,6 +16,13 @@ from .geg_parser import (
 
 from .aspect_ratio import aspect_ratio
 from .angular_resolution import angular_resolution_min_angle, angular_resolution_avg_angle
+
+# `geg.angular_resolution` doubles as (a) the submodule and (b) the canonical
+# function — the paper §3.2 eq. (1) min-angle variant. Importing here shadows
+# the submodule binding on the `geg` namespace so that `geg.angular_resolution(G)`
+# is callable; `from geg.angular_resolution import X` still works (it resolves
+# through `sys.modules`, not the package attribute).
+angular_resolution = angular_resolution_min_angle
 from .crossing_angle import crossing_angle
 from .edge_crossings import edge_crossings, edge_crossings_bezier
 from .edge_length_deviation import edge_length_deviation
@@ -48,7 +55,7 @@ __all__ = [
     "compute_global_scale","determine_N_for_segment",
     "get_convex_hull_area",
     # metrics
-    "aspect_ratio","angular_resolution_min_angle","angular_resolution_avg_angle",
+    "aspect_ratio","angular_resolution","angular_resolution_min_angle","angular_resolution_avg_angle",
     "crossing_angle","edge_crossings","edge_crossings_bezier",
     "edge_length_deviation","edge_orthogonality","curved_edge_orthogonality",
     "gabriel_ratio_edges","gabriel_ratio_nodes","kruskal_stress",

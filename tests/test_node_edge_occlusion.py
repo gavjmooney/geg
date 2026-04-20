@@ -46,7 +46,11 @@ class TestDegenerate:
 
 class TestNoOcclusion:
     def test_equilateral_triangle(self):
-        # Each vertex is far from the opposite edge → no penalty.
+        # For each edge, the non-endpoint node sits at the opposite vertex
+        # of the triangle — perpendicular distance from that vertex to the
+        # opposite side is the triangle height = √3/2 ≈ 0.866. Bbox diag is
+        # ≈ 1, so ε ≈ 0.02; 0.866 >> 0.02 → gap/ε is huge → penalty = 0 for
+        # every (edge, node) pair, and the score is 1 exactly.
         coords = {
             "a": (0.0, 0.0), "b": (1.0, 0.0),
             "c": (0.5, math.sqrt(3) / 2),
@@ -55,6 +59,10 @@ class TestNoOcclusion:
         assert node_edge_occlusion(_layout(coords, edges)) == pytest.approx(1.0)
 
     def test_star_k1_4_legs_dont_pass_over_other_leaves(self):
+        # Star with axis-aligned legs; each edge is along an axis and the
+        # non-endpoint leaves sit on different axes, so perpendicular
+        # distance from any leaf to a perpendicular leg is the leg length
+        # (= 1), far beyond ε (≈ 0.04 on a 2-wide bbox). Penalty = 0 everywhere.
         coords = {
             "c": (0.0, 0.0), "e": (1.0, 0.0),
             "s": (0.0, 1.0), "w": (-1.0, 0.0), "n": (0.0, -1.0),

@@ -41,6 +41,7 @@ class TestDegenerate:
 
 class TestRatios:
     def test_unit_square(self):
+        # bbox is 1 × 1, so h = w and both branches (h/w, w/h) yield 1.
         G = _layout({
             "a": (0.0, 0.0), "b": (1.0, 0.0),
             "c": (0.0, 1.0), "d": (1.0, 1.0),

@@ -21,7 +21,11 @@ def _layout(coords):
 
 
 class TestPerfectUniformity:
+    """Every edge has the same length, so L_e = L_ideal for all e; each
+    |L_e - L_ideal| / L_ideal term is 0 and ELD = 1/(1+0) = 1."""
+
     def test_equilateral_triangle(self):
+        # Three sides all of length 1 (equilateral) → no deviation.
         G = _layout({
             "a": (0.0, 0.0), "b": (1.0, 0.0),
             "c": (0.5, math.sqrt(3) / 2),
@@ -30,6 +34,7 @@ class TestPerfectUniformity:
         assert edge_length_deviation(G) == pytest.approx(1.0)
 
     def test_unit_square_only_sides(self):
+        # Four sides all of length 1; diagonals not included.
         G = _layout({
             "a": (0.0, 0.0), "b": (1.0, 0.0),
             "c": (1.0, 1.0), "d": (0.0, 1.0),

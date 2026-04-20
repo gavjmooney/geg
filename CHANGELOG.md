@@ -8,6 +8,7 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Added
 
+- **`geg.angular_resolution`** is now also callable as the canonical paper §3.2 eq. (1) min-angle variant (alias for `angular_resolution_min_angle`). The submodule path `from geg.angular_resolution import …` continues to work (resolved through `sys.modules`); only the package attribute is rebound to the function so `geg.angular_resolution(G)` is the ergonomic one-liner users probably expect.
 - **`geg.graph_properties` module** — topological descriptors of the graph, independent of the layout. 26 properties:
   - **Basic counts & flags:** `n_nodes`, `n_edges`, `density`, `is_directed`, `is_multigraph`, `n_self_loops`, `n_connected_components`, `is_connected`.
   - **Degree statistics:** `min_degree`, `max_degree`, `mean_degree`, `degree_std`.
