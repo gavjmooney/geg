@@ -1,48 +1,39 @@
+from typing import Any, List, Optional, Tuple
 
-from . import geg_parser as geg
 import networkx as nx
+
 from .edge_crossings import edge_crossings
-import math
-from typing import Optional, List, Tuple, Any
 
-def crossing_angle(G: nx.Graph, ideal_angle: float = 90, crossings: Optional[List[Tuple[Any, float]]] = None) -> float:
-    """
-    Compute a crossing-angle quality score relative to an ideal angle.
 
-    If crossings are not provided, they are computed. For each edge crossing,
-    the crossing angle (in degrees) is compared to the ideal (default 90).
-    The metric aggregates the normalized shortfall (ideal - angle)/ideal across
-    all crossings and returns 1 minus the average shortfall.
+def crossing_angle(
+    G: nx.Graph,
+    ideal_angle: float = 90.0,
+    crossings: Optional[List[Tuple[Any, float]]] = None,
+) -> float:
+    """Crossing-angle quality score in [0, 1].
 
-    Notes:
-        - If there are no crossings, returns 1.0.
-        - Crossing angles are assumed to be the acute angles in [0, 90].
+    Paper §3.2 eq. (2):
+        CA(D) = 1 - (1/|X|) * sum_x (φ - φ^min_x) / φ
+    where φ = 90° and φ^min_x is the acute angle between the two crossing
+    edges at x. X is the set of crossings in the drawing. Returns 1.0 if there
+    are no crossings.
 
     Args:
-        G: A NetworkX graph with edge paths.
-        ideal_angle: The desired crossing angle in degrees (default 90).
-        crossings: Optional list of crossings as tuples where the second element
-            is the crossing angle in degrees. If None, crossings are computed.
+        G: NetworkX graph with edge 'path' attrs.
+        ideal_angle: Target crossing angle in degrees (default 90, per paper).
+        crossings: Optional pre-computed list of (position, angle_deg) tuples.
+            If None, computed via `edge_crossings(G, return_crossings=True)`.
 
     Returns:
-        A float in [0, 1], with higher values indicating better crossing angles.
+        Float in [0, 1], 1 = every crossing is at the ideal angle (or no crossings).
     """
-
-    # No crossings passed to function
-    if not crossings:
+    if crossings is None:
         _, crossings = edge_crossings(G, return_crossings=True)
 
-    # No crossings in drawing
     if not crossings:
         return 1.0
-        
 
-    angles = [x[1] for x in crossings]
-
-    min_angles_score_sum = 0
-   
-    for angle in angles:
-        # accumulate normalised deviation from the ideal
-        min_angles_score_sum += (ideal_angle - angle) / ideal_angle
-
-    return 1 - (min_angles_score_sum / len(angles))
+    shortfall_sum = sum(
+        (ideal_angle - angle) / ideal_angle for _, angle in crossings
+    )
+    return 1.0 - shortfall_sum / len(crossings)
