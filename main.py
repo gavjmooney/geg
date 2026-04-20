@@ -24,8 +24,11 @@ below. Five subcommands:
     python main.py batch     --input-dir DIR --output-csv metrics.csv
         Walk `DIR` recursively, load every .geg / .graphml / .gml file
         found, and append one row per file to the CSV. Each row contains
-        the relative path, the detected format, node / edge counts, and
-        every metric value. Failures are logged but never abort the run.
+        the relative path, the detected format, every graph property
+        (topology: node counts, degree stats, planarity, …), and every
+        layout metric. Failures are logged but never abort the run.
+        All-pairs-shortest-path is computed once per file and shared
+        between kruskal_stress and the three distance properties.
 
 Accepted input formats: `.geg`, `.graphml`, `.gml` (case-insensitive).
 """
@@ -74,6 +77,10 @@ METRICS: List[Tuple[str, Callable[[nx.Graph], float]]] = [
 ]
 METRIC_NAMES: List[str] = [name for name, _ in METRICS]
 
+# Graph-property column list (topology, not layout). Ordered by
+# `geg.graph_properties.PROPERTY_NAMES`.
+PROPERTY_NAMES: List[str] = list(geg.graph_properties.PROPERTY_NAMES)
+
 
 # ---------- Loading ----------
 
@@ -100,7 +107,7 @@ def find_drawings(root: Path) -> Iterable[Path]:
 
 # ---------- Metrics ----------
 
-def compute_metrics(G: nx.Graph) -> Dict[str, float]:
+def compute_metrics(G: nx.Graph, *, apsp=None) -> Dict[str, float]:
     """Compute every metric on `G`, sharing expensive intermediates.
 
     Shared work computed once per call:
@@ -109,6 +116,11 @@ def compute_metrics(G: nx.Graph) -> Dict[str, float]:
       - `edge_crossings(G, return_crossings=True)` — gives both the
         `edge_crossings` score and the crossings list that
         `crossing_angle` needs.
+
+    `apsp` is an optional precomputed all-pairs-shortest-path-length dict
+    forwarded to `kruskal_stress`; useful in batch contexts where the
+    same APSP also feeds graph-property metrics (diameter, radius,
+    avg_shortest_path_length).
 
     Any per-metric exception becomes NaN so one bad metric never kills the
     rest of the row.
@@ -140,7 +152,7 @@ def compute_metrics(G: nx.Graph) -> Dict[str, float]:
     out["edge_crossings"] = ec_score
     _safe("edge_length_deviation", lambda: geg.edge_length_deviation(G))
     _safe("edge_orthogonality", lambda: geg.edge_orthogonality(G))
-    _safe("kruskal_stress", lambda: geg.kruskal_stress(G))
+    _safe("kruskal_stress", lambda: geg.kruskal_stress(G, apsp=apsp))
     _safe("neighbourhood_preservation", lambda: geg.neighbourhood_preservation(G))
     _safe("node_edge_occlusion", lambda: geg.node_edge_occlusion(G, bbox=bbox))
     _safe("node_resolution", lambda: geg.node_resolution(G))
@@ -225,7 +237,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
     # orthogonality is aliased to edge_orthogonality) so stdout stays clean.
     warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-    header = ["file", "format", "n_nodes", "n_edges"] + METRIC_NAMES
+    header = ["file", "format"] + PROPERTY_NAMES + METRIC_NAMES
     ok = fail = 0
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -238,23 +250,54 @@ def cmd_batch(args: argparse.Namespace) -> None:
                 rel = path
             try:
                 G = load_drawing(path)
-                metrics = compute_metrics(G)
+                # APSP is the shared intermediate between kruskal_stress
+                # (a layout metric) and the three distance properties
+                # (diameter / radius / avg_shortest_path_length). Compute
+                # it once per file and thread into both.
+                apsp = _safe_apsp(G)
+                properties = geg.compute_properties(G, apsp=apsp)
+                metrics = compute_metrics(G, apsp=apsp)
                 writer.writerow(
-                    [str(rel), path.suffix.lstrip(".").lower(),
-                     G.number_of_nodes(), G.number_of_edges()]
-                    + [f"{metrics[n]:.9g}" for n in METRIC_NAMES]
+                    [str(rel), path.suffix.lstrip(".").lower()]
+                    + [_fmt(properties[n]) for n in PROPERTY_NAMES]
+                    + [_fmt(metrics[n]) for n in METRIC_NAMES]
                 )
                 ok += 1
                 print(f"[ok]   {rel}")
             except Exception as exc:
                 fail += 1
                 writer.writerow(
-                    [str(rel), path.suffix.lstrip(".").lower(), "", ""]
+                    [str(rel), path.suffix.lstrip(".").lower()]
+                    + ["" for _ in PROPERTY_NAMES]
                     + ["" for _ in METRIC_NAMES]
                 )
                 logging.error("[fail] %s: %s", rel, exc)
 
     print(f"\nWrote {out_csv}  ({ok} ok, {fail} failed)")
+
+
+def _safe_apsp(G: nx.Graph):
+    """Compute APSP on G (undirected view). Returns None on failure so the
+    downstream metrics / properties fall back to their internal paths."""
+    try:
+        return geg.graph_properties.compute_apsp(G)
+    except Exception as exc:
+        logging.warning("compute_apsp failed: %s", exc)
+        return None
+
+
+def _fmt(value) -> str:
+    """Format a value for CSV output.
+
+    Booleans become 'True' / 'False' (readable); numeric values use the
+    short general-format '%.9g' that the batch has always used; NaN passes
+    through as 'nan'; anything else is stringified.
+    """
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return f"{value:.9g}"
+    return str(value)
 
 
 # ---------- CLI wiring ----------

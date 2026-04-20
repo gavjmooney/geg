@@ -18,9 +18,12 @@ name; failures become NaN so a single exception never kills the batch.
 from __future__ import annotations
 
 import statistics
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import networkx as nx
+
+
+Apsp = Dict[Any, Dict[Any, int]]
 
 
 # ---------- shared helpers ----------
@@ -188,19 +191,77 @@ def is_eulerian(G: nx.Graph) -> bool:
 
 # ---------- distances (per-component aggregation) ----------
 
-def diameter(G: nx.Graph) -> float:
-    """Weighted sum of per-component diameters by component node count."""
-    return _component_weighted_sum(G, nx.diameter)
+def compute_apsp(G: nx.Graph) -> Apsp:
+    """Compute all-pairs-shortest-path-length on `G`'s undirected view.
+
+    Shared between the three distance properties (diameter, radius,
+    avg_shortest_path_length) and `kruskal_stress`. Precompute once and
+    pass the result into each function's `apsp` kwarg to avoid redundant
+    BFS passes.
+    """
+    UG = _undirected(G)
+    return dict(nx.all_pairs_shortest_path_length(UG))
 
 
-def radius(G: nx.Graph) -> float:
+def _diameter_from_apsp(nodes: List[Any], apsp: Apsp) -> int:
+    """Max pairwise distance within a single component."""
+    return max(
+        apsp[u][v]
+        for u in nodes
+        for v in nodes
+        if u != v
+    )
+
+
+def _radius_from_apsp(nodes: List[Any], apsp: Apsp) -> int:
+    """Min eccentricity within a single component."""
+    return min(
+        max(apsp[u][v] for v in nodes if v != u)
+        for u in nodes
+    )
+
+
+def _avg_spl_from_apsp(nodes: List[Any], apsp: Apsp) -> float:
+    n = len(nodes)
+    if n < 2:
+        return 0.0
+    total = sum(apsp[u][v] for u in nodes for v in nodes if u != v)
+    return total / (n * (n - 1))
+
+
+def _distance_property(
+    G: nx.Graph,
+    nx_fn: Callable[[nx.Graph], float],
+    apsp_fn: Callable[[List[Any], Apsp], float],
+    apsp: Optional[Apsp],
+) -> float:
+    """Per-component weighted sum, routing through either networkx or the
+    apsp-based helper depending on whether a precomputed dict is supplied."""
+    if apsp is not None:
+        per_component = lambda sub: apsp_fn(list(sub.nodes()), apsp)
+    else:
+        per_component = nx_fn
+    return _component_weighted_sum(G, per_component)
+
+
+def diameter(G: nx.Graph, *, apsp: Optional[Apsp] = None) -> float:
+    """Weighted sum of per-component diameters by component node count.
+
+    `apsp` — optional precomputed APSP (see `compute_apsp`); avoids a
+    re-run of the per-component BFS when multiple distance properties or
+    `kruskal_stress` are computed on the same graph.
+    """
+    return _distance_property(G, nx.diameter, _diameter_from_apsp, apsp)
+
+
+def radius(G: nx.Graph, *, apsp: Optional[Apsp] = None) -> float:
     """Weighted sum of per-component radii by component node count."""
-    return _component_weighted_sum(G, nx.radius)
+    return _distance_property(G, nx.radius, _radius_from_apsp, apsp)
 
 
-def avg_shortest_path_length(G: nx.Graph) -> float:
+def avg_shortest_path_length(G: nx.Graph, *, apsp: Optional[Apsp] = None) -> float:
     """Weighted sum of per-component averages by component node count."""
-    return _component_weighted_sum(G, nx.average_shortest_path_length)
+    return _distance_property(G, nx.average_shortest_path_length, _avg_spl_from_apsp, apsp)
 
 
 # ---------- clustering / triangles ----------
@@ -256,8 +317,19 @@ PROPERTY_NAMES: List[str] = [
 ]
 
 
-def compute_properties(G: nx.Graph) -> Dict[str, Any]:
+_APSP_DEPENDENT = {"diameter", "radius", "avg_shortest_path_length"}
+
+
+def compute_properties(
+    G: nx.Graph,
+    *,
+    apsp: Optional[Apsp] = None,
+) -> Dict[str, Any]:
     """Return every property in `PROPERTY_NAMES` as a dict.
+
+    `apsp` — optional precomputed APSP shared with `kruskal_stress` and
+    other distance callers. When None, each distance property computes its
+    own APSP per component.
 
     Any exception during a single property becomes NaN so the rest of the
     batch row survives.
@@ -266,7 +338,10 @@ def compute_properties(G: nx.Graph) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for name in PROPERTY_NAMES:
         try:
-            out[name] = mod[name](G)
+            if name in _APSP_DEPENDENT:
+                out[name] = mod[name](G, apsp=apsp)
+            else:
+                out[name] = mod[name](G)
         except Exception:
             out[name] = float("nan")
     return out

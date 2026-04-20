@@ -187,6 +187,48 @@ class TestBatchCSV:
             for name in m.METRIC_NAMES:
                 assert r[name] != "", f"{r['file']}: {name} missing"
 
+    def test_batch_includes_graph_property_columns(self, m, tmp_path):
+        """Every property in PROPERTY_NAMES is emitted as its own column and
+        populated for clean fixtures."""
+        out_csv = tmp_path / "out.csv"
+        m.main([
+            "batch",
+            "--input-dir", str(FIXTURES_DIR),
+            "--output-csv", str(out_csv),
+        ])
+        with open(out_csv, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        assert rows
+        for r in rows:
+            for name in m.PROPERTY_NAMES:
+                assert name in r, f"property column {name} missing in row"
+                assert r[name] != "", f"{r['file']}: {name} empty"
+
+    def test_batch_computes_apsp_once_per_file(self, m, monkeypatch):
+        """The batch subcommand must precompute APSP once per file and share
+        it between kruskal_stress (metric) and the three distance
+        properties."""
+        import geg as geg_pkg
+        calls = {"n": 0}
+
+        original = geg_pkg.graph_properties.compute_apsp
+
+        def counting(G, *a, **kw):
+            calls["n"] += 1
+            return original(G, *a, **kw)
+
+        monkeypatch.setattr(m.geg.graph_properties, "compute_apsp", counting)
+
+        # Pick one fixture and run the compute pipeline it exposes.
+        G = m.load_drawing(FIXTURES_DIR / "equilateral_triangle.geg")
+        apsp = m._safe_apsp(G)
+        m.geg.compute_properties(G, apsp=apsp)
+        m.compute_metrics(G, apsp=apsp)
+
+        assert calls["n"] == 1, (
+            f"compute_apsp ran {calls['n']}× per file; expected 1"
+        )
+
     def test_batch_tolerates_missing_dir(self, m, tmp_path):
         with pytest.raises(SystemExit):
             m.main([

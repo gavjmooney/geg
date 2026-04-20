@@ -228,3 +228,71 @@ class TestComputeProperties:
         import geg
         assert geg.compute_properties is gp.compute_properties
         assert geg.graph_properties is gp
+
+
+class TestApspSharing:
+    """Distance properties accept a precomputed APSP dict shared with
+    kruskal_stress. When passed, they use it instead of running their own
+    BFS — values must be identical to the unshared path."""
+
+    def test_diameter_with_apsp_matches_without(self):
+        G = nx.path_graph(5)
+        apsp = gp.compute_apsp(G)
+        assert gp.diameter(G, apsp=apsp) == pytest.approx(gp.diameter(G))
+
+    def test_radius_with_apsp_matches_without(self):
+        G = nx.cycle_graph(7)
+        apsp = gp.compute_apsp(G)
+        assert gp.radius(G, apsp=apsp) == pytest.approx(gp.radius(G))
+
+    def test_avg_spl_with_apsp_matches_without(self):
+        G = nx.complete_graph(5)
+        apsp = gp.compute_apsp(G)
+        assert gp.avg_shortest_path_length(G, apsp=apsp) == pytest.approx(
+            gp.avg_shortest_path_length(G)
+        )
+
+    def test_apsp_shared_across_distance_props(self, monkeypatch):
+        """Passing one precomputed APSP to all three distance properties
+        avoids re-running compute_apsp."""
+        calls = {"n": 0}
+        original = gp.compute_apsp
+
+        def counting(G, *a, **kw):
+            calls["n"] += 1
+            return original(G, *a, **kw)
+
+        monkeypatch.setattr(gp, "compute_apsp", counting)
+
+        G = nx.path_graph(6)
+        apsp = gp.compute_apsp(G)
+        gp.diameter(G, apsp=apsp)
+        gp.radius(G, apsp=apsp)
+        gp.avg_shortest_path_length(G, apsp=apsp)
+        gp.compute_properties(G, apsp=apsp)
+        # 1 call total — the one we made ourselves above.
+        assert calls["n"] == 1
+
+    def test_disconnected_apsp_sum_matches(self):
+        """Disconnected graph: apsp-based weighted sum must match the
+        networkx per-component route exactly."""
+        G = nx.disjoint_union(nx.complete_graph(4), nx.path_graph(3))
+        apsp = gp.compute_apsp(G)
+        assert gp.diameter(G, apsp=apsp) == pytest.approx(gp.diameter(G))
+        assert gp.radius(G, apsp=apsp) == pytest.approx(gp.radius(G))
+        assert gp.avg_shortest_path_length(G, apsp=apsp) == pytest.approx(
+            gp.avg_shortest_path_length(G)
+        )
+
+    def test_kruskal_stress_accepts_apsp(self):
+        """kruskal_stress must accept the same APSP dict and produce the
+        same value as without."""
+        import geg as geg_pkg
+        G = nx.path_graph(5)
+        for n, (x, y) in {0: (0, 0), 1: (1, 0), 2: (2, 0), 3: (3, 0), 4: (4, 0)}.items():
+            G.nodes[n]["x"] = float(x)
+            G.nodes[n]["y"] = float(y)
+        apsp = gp.compute_apsp(G)
+        assert geg_pkg.kruskal_stress(G, apsp=apsp) == pytest.approx(
+            geg_pkg.kruskal_stress(G)
+        )

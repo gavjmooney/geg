@@ -1,3 +1,5 @@
+from typing import Any, Dict, Optional
+
 import networkx as nx
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -6,11 +8,17 @@ from sklearn.metrics import pairwise_distances
 from .geg_parser import get_convex_hull_area
 
 
-def _connected_kruskal(G: nx.Graph) -> float:
-    """Kruskal stress on a connected component, mapped to [0, 1]."""
-    apsp = dict(nx.all_pairs_shortest_path_length(G))
+def _connected_kruskal(G: nx.Graph, *, apsp: Optional[Dict[Any, Dict[Any, int]]] = None) -> float:
+    """Kruskal stress on a connected component, mapped to [0, 1].
 
+    `apsp` — if given, a precomputed all-pairs-shortest-path-length dict
+    covering at least the nodes of `G` (extra entries are ignored). When
+    omitted, APSP is computed fresh on `G`.
+    """
     nodes = list(G.nodes())
+    if apsp is None:
+        apsp = dict(nx.all_pairs_shortest_path_length(G))
+
     X = np.array([[G.nodes[n]["x"], G.nodes[n]["y"]] for n in nodes])
 
     Xij = pairwise_distances(X)
@@ -32,7 +40,11 @@ def _connected_kruskal(G: nx.Graph) -> float:
     return 1.0 - float(np.sqrt(raw / norm))
 
 
-def kruskal_stress(G: nx.Graph) -> float:
+def kruskal_stress(
+    G: nx.Graph,
+    *,
+    apsp: Optional[Dict[Any, Dict[Any, int]]] = None,
+) -> float:
     """Kruskal stress metric mapped to [0, 1] (higher is better).
 
     Fits an isotonic regression h(d_ij) to pairs of (graph-theoretic distance,
@@ -44,6 +56,11 @@ def kruskal_stress(G: nx.Graph) -> float:
 
     Args:
         G: NetworkX graph with node attributes 'x' and 'y'.
+        apsp: Optional precomputed all-pairs-shortest-path-length dict on
+            the undirected view of `G`. Useful in batch contexts where the
+            same APSP feeds graph-property metrics (diameter, radius,
+            avg_shortest_path_length). When omitted, APSP is computed fresh
+            per connected component.
 
     Returns:
         Float in [0, 1], 1 = perfect monotone correspondence.
@@ -60,14 +77,14 @@ def kruskal_stress(G: nx.Graph) -> float:
 
     components = [G.subgraph(c).copy() for c in nx.connected_components(G)]
     if len(components) == 1:
-        return _connected_kruskal(G)
+        return _connected_kruskal(G, apsp=apsp)
 
     scores = []
     weights = []
     for sub in components:
         if sub.number_of_nodes() <= 1:
             continue
-        scores.append(_connected_kruskal(sub))
+        scores.append(_connected_kruskal(sub, apsp=apsp))
         weights.append(get_convex_hull_area(sub))
 
     total = sum(weights)

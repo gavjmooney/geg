@@ -38,6 +38,8 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Changed
 
+- **`main.py batch`** now emits graph properties alongside layout metrics in a single CSV row. New columns come from `geg.graph_properties.PROPERTY_NAMES` and appear before the metric columns. CSV header is now `file, format, <property columns>, <metric columns>` (previously `file, format, n_nodes, n_edges, <metric columns>`); `n_nodes` / `n_edges` are now sourced from the property set rather than emitted separately.
+- **APSP shared across `kruskal_stress`, `diameter`, `radius`, `avg_shortest_path_length`**. `kruskal_stress(G, apsp=None)` and `graph_properties.diameter / radius / avg_shortest_path_length(G, apsp=None)` now accept a precomputed all-pairs-shortest-path-length dict. `geg.graph_properties.compute_apsp(G)` is the canonical producer (runs once on the undirected view). `compute_properties(G, apsp=...)` and `main.compute_metrics(G, apsp=...)` thread it through, and the batch subcommand precomputes it once per file. On a 200-node random geometric graph this yields a ~1.2× speedup per batch entry; ratio scales with graph size.
 - **`main.compute_metrics(G)`** now shares expensive intermediates across metrics:
   - Calls `get_bounding_box(G)` once per graph (previously 3× — once each for `aspect_ratio`, `node_uniformity`, `node_edge_occlusion`). Each call internally runs `curves_promotion`, which is the costly part.
   - Calls `edge_crossings(G, return_crossings=True)` once per graph (previously 2× — once for the `edge_crossings` score, once again inside `crossing_angle`'s fallback). The crossings list is now computed once and passed into `crossing_angle(crossings=...)`.
