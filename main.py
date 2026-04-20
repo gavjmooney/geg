@@ -41,7 +41,7 @@ import logging
 import sys
 import warnings
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import networkx as nx
 
@@ -107,7 +107,12 @@ def find_drawings(root: Path) -> Iterable[Path]:
 
 # ---------- Metrics ----------
 
-def compute_metrics(G: nx.Graph, *, apsp=None) -> Dict[str, float]:
+def compute_metrics(
+    G: nx.Graph,
+    *,
+    apsp=None,
+    weight: Optional[str] = None,
+) -> Dict[str, float]:
     """Compute every metric on `G`, sharing expensive intermediates.
 
     Shared work computed once per call:
@@ -121,6 +126,11 @@ def compute_metrics(G: nx.Graph, *, apsp=None) -> Dict[str, float]:
     forwarded to `kruskal_stress`; useful in batch contexts where the
     same APSP also feeds graph-property metrics (diameter, radius,
     avg_shortest_path_length).
+
+    `weight` — edge attribute name routed to `kruskal_stress` (weighted
+    shortest paths) and to `edge_length_deviation` (per-edge ideal length
+    proportional to weight). Default `None` leaves both metrics
+    unweighted.
 
     Any per-metric exception becomes NaN so one bad metric never kills the
     rest of the row.
@@ -150,9 +160,9 @@ def compute_metrics(G: nx.Graph, *, apsp=None) -> Dict[str, float]:
     _safe("aspect_ratio", lambda: geg.aspect_ratio(G, bbox=bbox))
     _safe("crossing_angle", lambda: geg.crossing_angle(G, crossings=crossings))
     out["edge_crossings"] = ec_score
-    _safe("edge_length_deviation", lambda: geg.edge_length_deviation(G))
+    _safe("edge_length_deviation", lambda: geg.edge_length_deviation(G, weight=weight))
     _safe("edge_orthogonality", lambda: geg.edge_orthogonality(G))
-    _safe("kruskal_stress", lambda: geg.kruskal_stress(G, apsp=apsp))
+    _safe("kruskal_stress", lambda: geg.kruskal_stress(G, apsp=apsp, weight=weight))
     _safe("neighbourhood_preservation", lambda: geg.neighbourhood_preservation(G))
     _safe("node_edge_occlusion", lambda: geg.node_edge_occlusion(G, bbox=bbox))
     _safe("node_resolution", lambda: geg.node_resolution(G))
@@ -243,6 +253,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
         writer = csv.writer(f)
         writer.writerow(header)
 
+        weight = args.weight  # None by default → unweighted
         for path in find_drawings(root):
             try:
                 rel = path.relative_to(root)
@@ -254,9 +265,9 @@ def cmd_batch(args: argparse.Namespace) -> None:
                 # (a layout metric) and the three distance properties
                 # (diameter / radius / avg_shortest_path_length). Compute
                 # it once per file and thread into both.
-                apsp = _safe_apsp(G)
-                properties = geg.compute_properties(G, apsp=apsp)
-                metrics = compute_metrics(G, apsp=apsp)
+                apsp = _safe_apsp(G, weight=weight)
+                properties = geg.compute_properties(G, apsp=apsp, weight=weight)
+                metrics = compute_metrics(G, apsp=apsp, weight=weight)
                 writer.writerow(
                     [str(rel), path.suffix.lstrip(".").lower()]
                     + [_fmt(properties[n]) for n in PROPERTY_NAMES]
@@ -276,11 +287,12 @@ def cmd_batch(args: argparse.Namespace) -> None:
     print(f"\nWrote {out_csv}  ({ok} ok, {fail} failed)")
 
 
-def _safe_apsp(G: nx.Graph):
+def _safe_apsp(G: nx.Graph, weight: Optional[str] = None):
     """Compute APSP on G (undirected view). Returns None on failure so the
-    downstream metrics / properties fall back to their internal paths."""
+    downstream metrics / properties fall back to their internal paths.
+    `weight` is forwarded to `compute_apsp` for weighted shortest paths."""
     try:
-        return geg.graph_properties.compute_apsp(G)
+        return geg.graph_properties.compute_apsp(G, weight=weight)
     except Exception as exc:
         logging.warning("compute_apsp failed: %s", exc)
         return None
@@ -325,6 +337,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_batch.add_argument("--input-dir", required=True)
     p_batch.add_argument("--output-csv", required=True)
+    p_batch.add_argument(
+        "--weight",
+        default=None,
+        help=(
+            "Edge attribute name for weighted shortest paths and weighted "
+            "edge-length deviation. Default unweighted."
+        ),
+    )
     p_batch.set_defaults(func=cmd_batch)
 
     p_convert = sub.add_parser(

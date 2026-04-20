@@ -8,6 +8,29 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Added
 
+- **Opt-in weighted variants** for every metric and property that has a
+  meaningful weighted interpretation. New `weight: Optional[str] = None`
+  kwarg on:
+  - `kruskal_stress(G, apsp=None, weight=None)` — forwarded to networkx's
+    Dijkstra APSP when set; hop-count BFS when left at `None`.
+  - `graph_properties.diameter / radius / avg_shortest_path_length(G, …,
+    weight=None)` — same semantics.
+  - `graph_properties.compute_apsp(G, weight=None)` — produces weighted or
+    unweighted APSP; consumers that accept a precomputed `apsp` use whatever
+    semantics are baked in.
+  - `graph_properties.compute_properties(G, apsp=None, weight=None)` threads
+    `weight` through to the distance properties.
+  - `main.compute_metrics(G, apsp=None, weight=None)` threads to
+    `kruskal_stress` and `edge_length_deviation`.
+  - `main.py batch --weight NAME` — CLI flag.
+- **`edge_length_deviation(G, ideal=None, *, weight=None)`** weighted variant:
+  each edge aims for `L*(e) = |w_e| · s`, with scale `s = sum(L) / sum(|w|)`
+  so total ideal length matches total drawn length. Reduces to the
+  unweighted case exactly when all weights are equal. Negative weights are
+  taken as magnitude (the spring-rest-length interpretation has no sign);
+  zero weight raises `ValueError`; passing both `ideal` and `weight` raises
+  `ValueError`. `neighbourhood_preservation` intentionally has no weighted
+  variant (paper Jaccard is topological; documented).
 - **`geg.angular_resolution`** is now also callable as the canonical paper §3.2 eq. (1) min-angle variant (alias for `angular_resolution_min_angle`). The submodule path `from geg.angular_resolution import …` continues to work (resolved through `sys.modules`); only the package attribute is rebound to the function so `geg.angular_resolution(G)` is the ergonomic one-liner users probably expect.
 - **`geg.graph_properties` module** — topological descriptors of the graph, independent of the layout. 26 properties:
   - **Basic counts & flags:** `n_nodes`, `n_edges`, `density`, `is_directed`, `is_multigraph`, `n_self_loops`, `n_connected_components`, `is_connected`.

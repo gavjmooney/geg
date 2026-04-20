@@ -296,3 +296,47 @@ class TestApspSharing:
         assert geg_pkg.kruskal_stress(G, apsp=apsp) == pytest.approx(
             geg_pkg.kruskal_stress(G)
         )
+
+
+class TestWeightedDistances:
+    """`weight=` kwarg routes into networkx's Dijkstra-based APSP for each
+    of the three distance properties. With unit weights everywhere, the
+    result matches the unweighted (BFS) path; with a single heavy edge,
+    it takes the weighted value."""
+
+    def test_unit_weights_match_unweighted(self):
+        G = nx.path_graph(4)
+        for u, v in G.edges():
+            G.edges[u, v]["weight"] = 1.0
+        assert gp.diameter(G, weight="weight") == pytest.approx(gp.diameter(G))
+        assert gp.radius(G, weight="weight") == pytest.approx(gp.radius(G))
+        assert gp.avg_shortest_path_length(G, weight="weight") == pytest.approx(
+            gp.avg_shortest_path_length(G)
+        )
+
+    def test_heavy_edge_lifts_diameter(self):
+        # Path a-b-c. Give the middle edge weight 100, the other weight 1.
+        # Unweighted diameter = 2 (two hops). Weighted diameter = 101.
+        G = nx.Graph()
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=100.0)
+        assert gp.diameter(G) == 2
+        assert gp.diameter(G, weight="weight") == pytest.approx(101.0)
+
+    def test_precomputed_weighted_apsp_threaded_through(self):
+        """compute_apsp(G, weight=…) produces a weighted APSP; the distance
+        properties must use it and ignore the `weight=` kwarg when a
+        precomputed dict is supplied."""
+        G = nx.Graph()
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=100.0)
+        apsp = gp.compute_apsp(G, weight="weight")
+        assert gp.diameter(G, apsp=apsp) == pytest.approx(101.0)
+        assert gp.avg_shortest_path_length(G, apsp=apsp) > 1.0
+
+    def test_compute_properties_threads_weight(self):
+        G = nx.Graph()
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=100.0)
+        result = gp.compute_properties(G, weight="weight")
+        assert result["diameter"] == pytest.approx(101.0)

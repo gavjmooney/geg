@@ -132,3 +132,72 @@ class TestInvariants:
         G2 = _layout({n: (x * c - y * s, x * s + y * c) for n, (x, y) in coords.items()})
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert edge_length_deviation(G1) == pytest.approx(edge_length_deviation(G2))
+
+
+class TestWeighted:
+    """Weighted variant: each edge's ideal length is `w_e * s` where
+    s = sum(L) / sum(|w|), so the total drawn length matches the total
+    ideal length. Reduces to the unweighted formula when all weights
+    are equal."""
+
+    def test_unit_weights_match_unweighted(self):
+        # All weights = 1 ⇒ s = mean(L), ideal(e) = mean(L) for every e,
+        # identical to the unweighted formula.
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=1.0)
+        assert edge_length_deviation(G, weight="weight") == pytest.approx(
+            edge_length_deviation(G)
+        )
+
+    def test_constant_weights_match_unweighted(self):
+        # All weights = c > 0 ⇒ same per-edge ideal as mean(L). ELD invariant.
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G.add_edge("a", "b", weight=7.0)
+        G.add_edge("b", "c", weight=7.0)
+        assert edge_length_deviation(G, weight="weight") == pytest.approx(
+            edge_length_deviation(G)
+        )
+
+    def test_weights_proportional_to_drawn_length_is_perfect(self):
+        """When weights are proportional to drawn lengths (any positive
+        constant factor), each L(e) hits its ideal w_e * s exactly, so
+        every deviation is 0 and ELD = 1. Unweighted ELD is *not* 1 here —
+        the drawn lengths differ."""
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        # Drawn lengths: 1 and 2. Weights in same ratio.
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=2.0)
+        assert edge_length_deviation(G, weight="weight") == pytest.approx(1.0)
+        assert edge_length_deviation(G) < 1.0
+
+    def test_negative_weight_treated_as_magnitude(self):
+        # |w| is the effective length; a -2 spring is equivalent to a +2.
+        G1 = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G1.add_edge("a", "b", weight=1.0)
+        G1.add_edge("b", "c", weight=2.0)
+        G2 = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G2.add_edge("a", "b", weight=-1.0)
+        G2.add_edge("b", "c", weight=-2.0)
+        assert edge_length_deviation(G1, weight="weight") == pytest.approx(
+            edge_length_deviation(G2, weight="weight")
+        )
+
+    def test_zero_weight_raises(self):
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0)})
+        G.add_edge("a", "b", weight=0.0)
+        with pytest.raises(ValueError, match="zero"):
+            edge_length_deviation(G, weight="weight")
+
+    def test_missing_weight_raises(self):
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c")  # no weight attribute
+        with pytest.raises(ValueError, match="no 'weight' attribute"):
+            edge_length_deviation(G, weight="weight")
+
+    def test_weight_and_ideal_together_raise(self):
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0)})
+        G.add_edge("a", "b", weight=1.0)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            edge_length_deviation(G, ideal=2.0, weight="weight")

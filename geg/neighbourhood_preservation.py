@@ -55,6 +55,15 @@ def neighbourhood_preservation(G: nx.Graph, k: Optional[int] = None) -> float:
 
     Returns:
         Float in [0, 1], 1 = perfect preservation.
+
+    Notes:
+        NP has no weighted variant here. The paper definition (§3.2 eq. 8)
+        is a pure Jaccard of topological adjacency `A` against the
+        geometric k-NN matrix `K` — both 0/1 indicator matrices. There
+        isn't a clean "weighted Jaccard" that both preserves the paper's
+        identity when all weights = 1 and tracks a single metric value
+        in [0, 1]. Edges with a `weight` attribute are treated as ordinary
+        adjacency (weight value ignored).
     """
     if G.number_of_nodes() <= 1:
         return 1.0

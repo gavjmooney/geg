@@ -213,3 +213,39 @@ class TestDirectedGraph:
 
         UG = DG.to_undirected()
         assert kruskal_stress(DG) == pytest.approx(kruskal_stress(UG))
+
+
+class TestWeightedShortestPaths:
+    """`weight=` kwarg forwards through to networkx's Dijkstra APSP. Graph
+    distances are sums of edge weights along the shortest path; Euclidean
+    layout distances are unchanged. When all weights equal a constant c,
+    per-component graph distances scale uniformly by c → monotone order
+    unchanged → isotonic fit absorbs c → same score as unweighted."""
+
+    def test_unit_weights_match_unweighted(self):
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        G = _layout(coords)
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=1.0)
+        assert kruskal_stress(G, weight="weight") == pytest.approx(kruskal_stress(G))
+
+    def test_constant_weights_scale_invariant(self):
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        G = _layout(coords)
+        G.add_edge("a", "b", weight=7.3)
+        G.add_edge("b", "c", weight=7.3)
+        # All graph distances multiply by 7.3; isotonic regression is invariant.
+        assert kruskal_stress(G, weight="weight") == pytest.approx(kruskal_stress(G))
+
+    def test_weights_matching_drawn_lengths_give_perfect_score(self):
+        """Stretched path a=(0,0), b=(1,0), c=(3,0) — drawn lengths 1, 2.
+        Unweighted KSM ≈ 0.811 because graph distances are [1, 1, 2] but
+        Euclidean are [1, 2, 3] — a non-monotone mismatch at the first
+        tied d=1 pair. If edge weights match drawn lengths (1 and 2),
+        weighted graph distances become [1, 2, 3] — identical to x → KSM = 1.
+        """
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)})
+        G.add_edge("a", "b", weight=1.0)
+        G.add_edge("b", "c", weight=2.0)
+        assert kruskal_stress(G) == pytest.approx(1.0 - math.sqrt(0.5 / 14.0))
+        assert kruskal_stress(G, weight="weight") == pytest.approx(1.0)
