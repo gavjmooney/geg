@@ -23,11 +23,11 @@ This file catalogues bugs, numerical red flags, definitional ambiguities, and op
 - **Fix:** Guard the `ideal == 0` case; return 1.0 (paper's "same length" condition holds vacuously). Also changed the m=0 (edgeless) return from 0.0 → 1.0 for consistency. Migrated to canonical helpers (`_geometry.distance`, `_paths.parse_path`).
 - **TVCG-impact:** no — TVCG drawings do not contain zero-length edges, and have m>0. Plus, the m=0 code path was unreachable in TVCG.
 
-### EC-1 — Debug `print()` calls in production path
-- **Where:** `geg/edge_crossings.py:82,87` (approximately).
+### EC-1 — Debug `print()` calls in production path [FIXED]
+- **Where:** `geg/edge_crossings.py:82,87` (old, in `edge_crossings_bezier`).
 - **What:** Stray debug prints left in library code.
-- **Fix direction:** Remove or gate behind a `verbose=False` kwarg / `logging`.
-- **TVCG-impact:** no (output only).
+- **Fix:** Removed.
+- **TVCG-impact:** no (output only; `edge_crossings_bezier` was experimental anyway).
 
 ### PG-1 — Dead inline test code in `parse_graph.py`
 - **Where:** `geg/parse_graph.py:226–327` (approximately).
@@ -72,7 +72,8 @@ Canonical helpers now live in `geg/_geometry.py` and `geg/_paths.py` (added in P
 - [x] ~~Angle computation reimplemented in `edge_orthogonality.py`~~ — now uses per-segment paper formula directly.
 - [x] ~~Angle computation duplicated between `angular_resolution_min_angle` and `angular_resolution_avg_angle`~~ — consolidated into `_incident_edge_angles` + `_gaps_around_vertex` helpers.
 - [x] ~~`_squared_distance` in `gabriel_ratio.py`~~ — now imports from `_geometry`.
-- [ ] Angle computation still reimplemented in `edge_crossings.py` (the Bezier variant) — replace with `_geometry.angle_between`.
+- [x] ~~`bboxes_intersect`, `check_intersection`, `flatten_path_to_lines` in `edge_crossings.py`~~ — removed; `edge_crossings` now uses `_geometry.bboxes_intersect`, `_geometry.segment_intersection`, and `_paths.flatten_path_to_segments`.
+- [ ] `edge_crossings_bezier` still reimplements acute-angle-between-vectors inline (using svgpathtools complex-number tangents). Low priority since it's experimental.
 - [ ] Path linearisation in `geg_parser.approximate_edge_polyline` and `edge_crossings.flatten_path_to_lines` — replace with `_paths.flatten_path_to_polyline` / `_paths.flatten_path_to_segments` / `_paths.edge_polyline`.
 - [ ] `_squared_distance` in `gabriel_ratio.py` duplicates `_geometry.squared_distance`.
 - [ ] Segment-intersection / bbox-overlap helpers in `edge_crossings.py` (`bboxes_intersect`, `check_intersection`) — replace with `_geometry.bboxes_intersect` / `_geometry.segment_intersection`.
