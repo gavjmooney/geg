@@ -1,12 +1,14 @@
-"""GraphML (yEd-flavoured) reader, writer, and GraphML → GEG converter."""
+"""GraphML (yEd-flavoured) reader and writer.
+
+Format-to-format conversion (including `graphml_to_geg`,
+`convert_gml_to_graphml`, `convert_graphml_to_gml`) lives in
+`geg.io.convert`.
+"""
 
 import xml.etree.ElementTree as ET
-from typing import Optional
 from xml.dom import minidom
 
 import networkx as nx
-
-from .geg import write_geg
 
 GRAPHML_NS = "http://graphml.graphdrawing.org/xmlns"
 YED_NS = "http://www.yworks.com/xml/graphml"
@@ -244,70 +246,3 @@ def write_graphml(G: nx.Graph, filename: str, gml_format: bool = False) -> None:
         f.write(doc.toprettyxml(indent="    "))
 
 
-def graphml_to_geg(input_file: str, output_file: Optional[str] = None) -> nx.Graph:
-    """Convert a yEd GraphML drawing to a GEG NetworkX graph.
-
-    Reads via `read_graphml`, preserves node geometry/colour/shape/label/width/
-    height, encodes edge bends as an SVG `M…L…` path, and copies line styling
-    and labels forward. Optionally writes the resulting graph to `output_file`
-    as GEG JSON.
-    """
-    G = read_graphml(input_file)
-
-    if G.is_multigraph():
-        H: nx.Graph = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()
-    else:
-        H = nx.DiGraph() if G.is_directed() else nx.Graph()
-    H.graph.update(G.graph)
-
-    for n, attrs in G.nodes(data=True):
-        x = attrs.get("x", 0.0)
-        y = attrs.get("y", 0.0)
-        node_attrs = {
-            "x": x,
-            "y": y,
-            "position": [x, y],
-        }
-        for key in ("width", "height", "colour", "shape", "label"):
-            if key in attrs:
-                node_attrs[key] = attrs[key]
-        H.add_node(n, **node_attrs)
-
-    for u, v, attrs in G.edges(data=True):
-        polyline_flag = bool(attrs.get("polyline", False))
-        bends = [(float(bx), float(by)) for bx, by in attrs.get("bends", [])]
-
-        x0, y0 = G.nodes[u]["x"], G.nodes[u]["y"]
-        x1, y1 = G.nodes[v]["x"], G.nodes[v]["y"]
-        if not polyline_flag or not bends:
-            path = f"M{x0},{y0} L{x1},{y1}"
-        else:
-            segs = [f"M{x0},{y0}"]
-            segs += [f"L{bx},{by}" for bx, by in bends]
-            segs.append(f"L{x1},{y1}")
-            path = " ".join(segs)
-
-        edge_attrs = {"polyline": polyline_flag, "path": path}
-        for key in ("colour", "stroke_width", "label", "weight", "id"):
-            if key in attrs:
-                edge_attrs[key] = attrs[key]
-        H.add_edge(u, v, **edge_attrs)
-
-    if output_file:
-        write_geg(H, output_file)
-    return H
-
-
-def convert_gml_to_graphml(fname_gml: str, fname_graphml: str) -> None:
-    G = nx.read_gml(fname_gml, label=None)
-    write_graphml(G, fname_graphml, gml_format=True)
-
-
-def convert_graphml_to_gml(fname_graphml: str, fname_gml: str, with_nx: bool = False) -> None:
-    """Convert GraphML → GML via networkx. Does NOT preserve node positions
-    or edge attributes; use only on graphs, not drawings."""
-    if with_nx:
-        G = nx.read_graphml(fname_graphml)
-    else:
-        G = read_graphml(fname_graphml)
-    nx.write_gml(G, fname_gml)

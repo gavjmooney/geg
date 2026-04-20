@@ -1,4 +1,4 @@
-"""GML (yEd-flavoured) reader, writer, and GML → GEG converter.
+"""GML (yEd-flavoured) reader and writer.
 
 GML (Graph Modelling Language) is parsed via `networkx.read_gml`. yEd and
 other tools store drawing attributes under a `graphics` dict per node/edge;
@@ -6,13 +6,12 @@ this module unpacks the common fields into GEG-canonical attribute names
 (`x`, `y`, `width`, `height`, `colour`, `shape`, `label`, `bends`, …) so
 that callers get a similarly-shaped graph from `read_gml` as from
 `read_graphml`.
+
+Format-to-format conversion (including `gml_to_geg`) lives in
+`geg.io.convert`.
 """
 
-from typing import Optional
-
 import networkx as nx
-
-from .geg import write_geg
 
 
 # ---------- read ----------
@@ -211,50 +210,3 @@ def write_gml(G: nx.Graph, output_file: str) -> None:
         f.write("\n".join(lines) + "\n")
 
 
-# ---------- convert ----------
-
-def gml_to_geg(input_file: str, output_file: Optional[str] = None) -> nx.Graph:
-    """Convert a yEd GML drawing to a GEG NetworkX graph.
-
-    Reads via `read_gml`, then rewrites edge bends as SVG `M…L…` paths and
-    adds a `position` list per node (GEG-canonical form). Optionally writes
-    the result to `output_file` as GEG JSON.
-    """
-    G = read_gml(input_file)
-
-    if G.is_multigraph():
-        H: nx.Graph = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()
-    else:
-        H = nx.DiGraph() if G.is_directed() else nx.Graph()
-    H.graph.update(G.graph)
-
-    for n, attrs in G.nodes(data=True):
-        x = attrs.get("x", 0.0)
-        y = attrs.get("y", 0.0)
-        node_attrs = {"x": x, "y": y, "position": [x, y]}
-        for key in ("width", "height", "colour", "shape", "label"):
-            if key in attrs:
-                node_attrs[key] = attrs[key]
-        H.add_node(n, **node_attrs)
-
-    for u, v, attrs in G.edges(data=True):
-        bends = attrs.get("bends", [])
-        x0, y0 = H.nodes[u]["x"], H.nodes[u]["y"]
-        x1, y1 = H.nodes[v]["x"], H.nodes[v]["y"]
-
-        if len(bends) < 2:
-            path = f"M{x0},{y0} L{x1},{y1}"
-        else:
-            segs = [f"M{bends[0][0]},{bends[0][1]}"]
-            segs += [f"L{bx},{by}" for bx, by in bends[1:]]
-            path = " ".join(segs)
-
-        edge_attrs = {"polyline": bool(attrs.get("polyline", False)), "path": path}
-        for key in ("colour", "stroke_width", "label", "weight"):
-            if key in attrs:
-                edge_attrs[key] = attrs[key]
-        H.add_edge(u, v, **edge_attrs)
-
-    if output_file:
-        write_geg(H, output_file)
-    return H

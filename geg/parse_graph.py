@@ -6,12 +6,8 @@ still work. The real implementations live in `geg.io.graphml` as of the
 Phase 5 refactor.
 """
 
-from .io.graphml import (
-    read_graphml,
-    write_graphml,
-    convert_gml_to_graphml,
-    convert_graphml_to_gml,
-)
+from .io.graphml import read_graphml, write_graphml
+from .io.convert import convert_gml_to_graphml, convert_graphml_to_gml
 
 __all__ = [
     "read_graphml",

@@ -19,7 +19,7 @@ below. Five subcommands:
     python main.py convert   --input SRC --output DST
         Convert between supported formats. Dispatch is by file extension
         on both sides: .geg / .graphml / .gml for input, .geg / .graphml /
-        .svg for output.
+        .gml / .svg for output. Uses `geg.convert` under the hood.
 
     python main.py batch     --input-dir DIR --output-csv metrics.csv
         Walk `DIR` recursively, load every .geg / .graphml / .gml file
@@ -46,6 +46,7 @@ import geg
 
 
 SUPPORTED_INPUT_EXTENSIONS = {".geg", ".graphml", ".gml"}
+SUPPORTED_OUTPUT_EXTENSIONS = {".geg", ".graphml", ".gml", ".svg"}
 
 # The canonical metric set driving `compute_metrics`, `demo`, and the batch
 # CSV columns. Curation rules:
@@ -77,15 +78,11 @@ METRIC_NAMES: List[str] = [name for name, _ in METRICS]
 # ---------- Loading ----------
 
 def load_drawing(path: Path) -> nx.Graph:
-    """Load a drawing, dispatching on file extension."""
+    """Load a drawing, dispatching on file extension via `geg.read_drawing`."""
     ext = path.suffix.lower()
-    if ext == ".geg":
-        return geg.read_geg(str(path))
-    if ext == ".graphml":
-        return geg.graphml_to_geg(str(path))
-    if ext == ".gml":
-        return geg.gml_to_geg(str(path))
-    raise ValueError(f"Unsupported input extension {ext!r} for {path}")
+    if ext not in SUPPORTED_INPUT_EXTENSIONS:
+        raise ValueError(f"Unsupported input extension {ext!r} for {path}")
+    return geg.read_drawing(path)
 
 
 def find_drawings(root: Path) -> Iterable[Path]:
@@ -167,18 +164,10 @@ def cmd_render(args: argparse.Namespace) -> None:
 
 
 def cmd_convert(args: argparse.Namespace) -> None:
-    G = load_drawing(Path(args.input))
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    ext = out.suffix.lower()
-    if ext == ".geg":
-        geg.write_geg(G, str(out))
-    elif ext == ".graphml":
-        geg.write_graphml(G, str(out))
-    elif ext == ".svg":
-        geg.to_svg(G, str(out), grid=args.grid)
-    else:
-        raise ValueError(f"Unsupported output extension {ext!r}")
+    kwargs = {"grid": args.grid} if out.suffix.lower() == ".svg" else {}
+    geg.convert(args.input, str(out), **kwargs)
     print(f"Wrote {out}")
 
 
