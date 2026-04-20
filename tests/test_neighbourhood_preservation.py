@@ -111,3 +111,49 @@ class TestInvariants:
         G2 = _layout({n: (x * 17.3, y * 17.3) for n, (x, y) in coords.items()})
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert NP(G1) == pytest.approx(NP(G2))
+
+
+class TestDisconnected:
+    """Paper §3.3: NP on disconnected drawings is a weighted sum over
+    connected components, weights proportional to each component's convex-hull
+    area."""
+
+    def test_two_well_separated_perfect_triangles(self):
+        # Two equilateral triangles far enough apart that within-component
+        # k-NN never crosses component boundaries.
+        G = _layout({
+            "a": (0.0, 0.0), "b": (1.0, 0.0), "c": (0.5, 0.87),
+            "d": (100.0, 100.0), "e": (101.0, 100.0), "f": (100.5, 100.87),
+        })
+        G.add_edges_from([
+            ("a", "b"), ("b", "c"), ("c", "a"),
+            ("d", "e"), ("e", "f"), ("f", "d"),
+        ])
+        assert NP(G) == pytest.approx(1.0)
+
+    def test_close_components_with_cross_component_knn(self):
+        """Component 1 = long edge (A,B) at x=0 and x=10; component 2 =
+        isolated node C at (1, 0.1) — closer to A than B is.
+
+        Connected-case NP blindly runs k-NN on the full layout:
+          A's nearest = C (wrong component), B's nearest = C, C's nearest = A.
+          → A ∧ K = 0, A ∨ K = 5, NP = 0.
+
+        Paper §3.3 result:
+          Component 1 is a K2 → NP = 1. Component 2 is a singleton (skipped).
+          Weighted by hull area → NP = 1.
+        """
+        G = _layout({
+            "a": (0.0, 0.0),
+            "b": (10.0, 0.0),
+            "c": (1.0, 0.1),
+        })
+        G.add_edge("a", "b")
+        # c is isolated
+        assert NP(G) == pytest.approx(1.0)
+
+    def test_does_not_raise_on_all_isolated(self):
+        G = _layout({"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (2.0, 0.0)})
+        # No edges; every node is isolated.
+        result = NP(G)
+        assert 0.0 <= result <= 1.0

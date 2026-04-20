@@ -44,8 +44,8 @@ This file catalogues bugs, numerical red flags, definitional ambiguities, and op
 - **Open question:** What should each of the remaining metrics do for disconnected drawings? Some are naturally unaffected (AR, NR min/max over all pairs), some likely want area-weighting, some may want a different aggregation. Decide per metric and document in the metric module.
 - **Action:** Address during Phase 2 TDD. Each metric gets an explicit design note in its module docstring stating its disconnected-graph behaviour.
 - **Progress:**
-  - [x] KSM — weighted sum by component convex-hull area (paper §3.3). Fixed in commit on `dev/metrics-refactor-tdd`.
-  - [ ] NP — weighted sum by component convex-hull area (paper §3.3, pending Phase 2 NP work).
+  - [x] KSM — weighted sum by component convex-hull area (paper §3.3). Fixed.
+  - [x] NP — weighted sum by component convex-hull area (paper §3.3). Fixed.
   - [ ] AR, Asp, CA, EC, ELD, EO, GR, NR, NU — per-metric decision required.
 
 ### DQ-2 — Curved / Bézier edge handling per metric

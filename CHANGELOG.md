@@ -24,3 +24,4 @@ Ongoing TDD refactor of the metrics library. Entries below track public-API–af
 
 ### Fixed
 - `kruskal_stress`: now handles disconnected drawings per paper §3.3 (weighted sum by per-component convex-hull area). The previous implementation raised `KeyError` on any graph with more than one connected component.
+- `neighbourhood_preservation`: now handles disconnected drawings per paper §3.3 (weighted sum by per-component convex-hull area). Previously, the k-NN matrix was computed over the full layout, which could include cross-component neighbours and artificially depress the score.
