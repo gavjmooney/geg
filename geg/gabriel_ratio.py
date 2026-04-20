@@ -1,11 +1,16 @@
-import math
-from typing import Dict, Tuple, Hashable
+"""Gabriel Ratio metrics (non-canonical in the GD 2025 paper).
+
+The paper excludes Gabriel Ratio because it is not well-defined for drawings
+with curved/polyline edges. These implementations operate on straight-line
+edges only (edge 'path' attributes are ignored); node positions are taken
+from the 'x'/'y' attributes.
+"""
+
+from typing import Dict, Hashable, Tuple
+
 import networkx as nx
 
-def _squared_distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:
-    dx = a[0] - b[0]
-    dy = a[1] - b[1]
-    return dx * dx + dy * dy
+from ._geometry import squared_distance as _squared_distance
 
 
 def gabriel_ratio_edges(G: nx.Graph, tol: float = 1e-12) -> float:

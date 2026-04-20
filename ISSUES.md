@@ -71,6 +71,7 @@ Canonical helpers now live in `geg/_geometry.py` and `geg/_paths.py` (added in P
 
 - [x] ~~Angle computation reimplemented in `edge_orthogonality.py`~~ — now uses per-segment paper formula directly.
 - [x] ~~Angle computation duplicated between `angular_resolution_min_angle` and `angular_resolution_avg_angle`~~ — consolidated into `_incident_edge_angles` + `_gaps_around_vertex` helpers.
+- [x] ~~`_squared_distance` in `gabriel_ratio.py`~~ — now imports from `_geometry`.
 - [ ] Angle computation still reimplemented in `edge_crossings.py` (the Bezier variant) — replace with `_geometry.angle_between`.
 - [ ] Path linearisation in `geg_parser.approximate_edge_polyline` and `edge_crossings.flatten_path_to_lines` — replace with `_paths.flatten_path_to_polyline` / `_paths.flatten_path_to_segments` / `_paths.edge_polyline`.
 - [ ] `_squared_distance` in `gabriel_ratio.py` duplicates `_geometry.squared_distance`.
