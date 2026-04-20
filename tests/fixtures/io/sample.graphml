@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:y="http://www.yworks.com/xml/graphml">
+  <key id="d1" yfiles.type="nodegraphics" for="node"/>
+  <key id="d2" yfiles.type="edgegraphics" for="edge"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="a">
+      <data key="d1">
+        <y:ShapeNode>
+          <y:Geometry x="0.0" y="0.0" width="40.0" height="30.0"/>
+          <y:Fill color="#FF0000" transparent="false"/>
+          <y:Shape type="ellipse"/>
+          <y:NodeLabel>Alpha</y:NodeLabel>
+        </y:ShapeNode>
+      </data>
+    </node>
+    <node id="b">
+      <data key="d1">
+        <y:ShapeNode>
+          <y:Geometry x="100.0" y="50.0" width="60.0" height="20.0"/>
+          <y:Fill color="#00FF00" transparent="false"/>
+          <y:Shape type="rectangle"/>
+          <y:NodeLabel>Beta</y:NodeLabel>
+        </y:ShapeNode>
+      </data>
+    </node>
+    <edge source="a" target="b">
+      <data key="d2">
+        <y:PolyLineEdge>
+          <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0">
+            <y:Point x="25.0" y="25.0"/>
+            <y:Point x="75.0" y="25.0"/>
+          </y:Path>
+          <y:LineStyle color="#0000FF" type="line" width="2.5"/>
+          <y:EdgeLabel>bend-edge</y:EdgeLabel>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+  </graph>
+</graphml>

@@ -3,39 +3,36 @@
 # including curved edges which follow the SVG path format.
 # https://www.gavjmooney.com
 
-import json
-import re
-import networkx as nx
+"""Geometry, rendering, and curves-promotion helpers for GEG drawings.
+
+File-I/O functions live in `geg.io` as of the Phase 5 refactor. The
+re-exports below keep existing imports like
+`from geg.geg_parser import read_geg` working for downstream callers.
+"""
+
 import math
-import json
-import svgpathtools
-from . import parse_graph as pg
-import numpy as np
-from scipy.spatial import ConvexHull
-from xml.etree.ElementTree import Element, SubElement, tostring
+import re
 import xml.dom.minidom
-from scipy.spatial.distance import pdist
 from typing import Any, Dict, Hashable, Iterable, List, Optional, Tuple, Union
+from xml.etree.ElementTree import Element, SubElement, tostring
 
-def _coerce_bool(value: Any) -> Any:
-    """
-    Convert common string/number representations to Python bools.
+import networkx as nx
+import numpy as np
+import svgpathtools
+from scipy.spatial import ConvexHull
+from scipy.spatial.distance import pdist
 
-    Returns the original value if it cannot be confidently coerced.
-    """
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in {"true", "1", "yes", "y", "t"}:
-            return True
-        if v in {"false", "0", "no", "n", "f"}:
-            return False
-        return value
-    if isinstance(value, (int, float)):
-        # Treat any non-zero as True
-        return bool(value)
-    return value
+# Re-exports: file I/O (public API entry points) now live under geg.io.
+from .io.geg import (
+    _coerce_bool,
+    has_self_loops_file,
+    is_multigraph_file,
+    read_geg,
+    write_geg,
+)
+from .io.gml import gml_to_geg
+from .io.graphml import graphml_to_geg
+
 
 def get_convex_hull_area(G: nx.Graph, tol: float = 1e-6) -> float:
     """
@@ -81,31 +78,18 @@ def euclidean_distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:
     dy = b[1] - a[1]
     return math.hypot(dx, dy)
 
-def has_self_loops_file(input_file: str) -> bool:
-    """
-    Determine whether the GEG file contains any self-loops.
-
-    Args:
-        input_file: Path to a .geg JSON file.
-
-    Returns:
-        True if any edge has the same source and target, else False.
-    """
-    with open(input_file, 'r') as f:
-        data = json.load(f)
-
-    for edge in data.get("edges", []):
-        if edge["source"] == edge["target"]:
-            return True
-
-    return False
-
 def has_self_loops_graph(G: nx.Graph) -> bool:
     """Return True if the graph contains any self-loop edges."""
     for u, v in G.edges():
         if u == v:
             return True
     return False
+
+
+def is_multigraph_graph(G: nx.Graph) -> bool:
+    """Return True iff G is a NetworkX MultiGraph or MultiDiGraph."""
+    return isinstance(G, (nx.MultiGraph, nx.MultiDiGraph))
+
 
 def contains_curves(G: nx.Graph) -> bool:
     """
@@ -158,338 +142,6 @@ def contains_polylines(G: nx.Graph) -> bool:
             return True
     return False
 
-def is_multigraph_file(input_file: str) -> bool:
-    """
-    Determine whether the GEG file represents a multigraph.
-
-    Detects multiple edges between the same pair (normalized if undirected).
-
-    Args:
-        input_file: Path to the .geg file.
-
-    Returns:
-        True if any pair of nodes has more than one edge between them.
-    """
-    with open(input_file, 'r') as f:
-        data = json.load(f)
-
-    directed = data.get("graph", {}).get("directed", False)
-    seen = {}
-    for edge in data.get("edges", []):
-        src = edge["source"]
-        tgt = edge["target"]
-        # For undirected graphs, normalize the key
-        key = (src, tgt) if directed else tuple(sorted((src, tgt)))
-        seen[key] = seen.get(key, 0) + 1
-        if seen[key] > 1:
-            return True#, seen
-
-    return False#, seen
-
-def is_multigraph_graph(G: nx.Graph) -> bool:
-    """Return True if G is a NetworkX MultiGraph or MultiDiGraph."""
-    return isinstance(G, (nx.MultiGraph, nx.MultiDiGraph))
-
-def read_geg(input_file: str) -> nx.Graph:
-    """
-    Read a GEG file into a NetworkX graph, preserving attributes.
-
-    Accepts node coordinates as 'position' (list/tuple or {'x','y'}), 'pos', or
-    top-level 'x'/'y', and normalizes nodes to always have 'x','y','position'.
-
-    Args:
-        input_file: Path to the .geg JSON file.
-
-    Returns:
-        A NetworkX Graph/DiGraph/Multi(Graph/DiGraph) mirroring the input.
-    """
-    with open(input_file, "r") as file:
-        data = json.load(file)
-
-    # Coerce possible non-standard boolean encodings for 'directed'
-    directed_flag = _coerce_bool(data.get("graph", {}).get("directed", False))
-
-    if is_multigraph_file(input_file):
-        G = nx.MultiDiGraph() if directed_flag else nx.MultiGraph()
-    else:
-        # Create a directed or undirected graph
-        G = nx.DiGraph() if directed_flag else nx.Graph()
-
-    # Store graph-level properties (metadata)
-    G.graph.update({k: v for k, v in data["graph"].items() if k != "directed"})
-
-    # Add nodes
-    for node in data["nodes"]:
-        node_id = node["id"]
-        attrs = {k: v for k, v in node.items() if k != "id"}
-
-        # Normalize position: accept 'pos', 'position', or top-level 'x'/'y'
-        x_val = None
-        y_val = None
-
-        # Case 1: explicit x/y
-        if 'x' in attrs and 'y' in attrs:
-            try:
-                x_val = float(attrs['x'])
-                y_val = float(attrs['y'])
-            except Exception:
-                pass
-
-        # Case 2: 'pos' as list/tuple or dict
-        if (x_val is None or y_val is None) and 'pos' in attrs:
-            pos = attrs.get('pos')
-            try:
-                if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                    x_val = float(pos[0])
-                    y_val = float(pos[1])
-                elif isinstance(pos, dict) and 'x' in pos and 'y' in pos:
-                    x_val = float(pos['x'])
-                    y_val = float(pos['y'])
-            except Exception:
-                pass
-
-        # Case 3: 'position' as list/tuple or dict
-        if (x_val is None or y_val is None) and 'position' in attrs:
-            position = attrs.get('position')
-            try:
-                if isinstance(position, (list, tuple)) and len(position) >= 2:
-                    x_val = float(position[0])
-                    y_val = float(position[1])
-                elif isinstance(position, dict) and 'x' in position and 'y' in position:
-                    x_val = float(position['x'])
-                    y_val = float(position['y'])
-            except Exception:
-                pass
-
-        # If we got coordinates, ensure both x/y and position are present
-        if x_val is not None and y_val is not None:
-            attrs['x'] = x_val
-            attrs['y'] = y_val
-            attrs['position'] = [x_val, y_val]
-
-        G.add_node(node_id, **attrs)
-
-    # Add edges
-    for edge in data["edges"]:
-        edge_id = edge["id"]
-        source = edge["source"]
-        target = edge["target"]
-        edge_attributes = {k: v for k, v in edge.items() if k not in ["id"]}#, "source", "target"]}
-        # Normalize boolean-like fields (e.g., 'polyline')
-        if "polyline" in edge_attributes:
-            edge_attributes["polyline"] = _coerce_bool(edge_attributes["polyline"])
-        G.add_edge(source, target, id=edge_id, **edge_attributes)
-
-    return G
-
-def write_geg(G: nx.Graph, output_file: str) -> None:
-    """
-    Write a NetworkX graph to the GEG JSON file format.
-
-    Ensures each node includes a 'position' array (built from x/y or pos).
-
-    Args:
-        G: The NetworkX graph to save.
-        output_file: Path to write the .geg file.
-    """
-    geg_data = {
-        "graph": {
-            "directed": isinstance(G, nx.DiGraph),
-            **G.graph  # Include any other graph-level properties
-        },
-        "nodes": [],
-        "edges": []
-    }
-
-    # Convert nodes
-    for node, attrs in G.nodes(data=True):
-        node_data = {"id": node, **attrs}
-        # Ensure 'position' exists, building from x/y if necessary
-        if 'position' not in node_data:
-            x_val = node_data.get('x', None)
-            y_val = node_data.get('y', None)
-            if x_val is None or y_val is None:
-                pos = node_data.get('pos', None)
-                if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-                    x_val, y_val = pos[0], pos[1]
-                elif isinstance(pos, dict) and 'x' in pos and 'y' in pos:
-                    x_val, y_val = pos['x'], pos['y']
-            if x_val is not None and y_val is not None:
-                try:
-                    node_data['position'] = [float(x_val), float(y_val)]
-                except Exception:
-                    pass
-        geg_data["nodes"].append(node_data)
-
-    # Convert edges
-    for source, target, attrs in G.edges(data=True):
-        edge_data = {"id": attrs.get("id", f"{source}-{target}"), "source": source, "target": target}
-        edge_data.update({k: v for k, v in attrs.items() if k != "id"})  # Preserve edge properties
-        geg_data["edges"].append(edge_data)
-
-    # Write to file
-    with open(output_file, "w") as file:
-        json.dump(geg_data, file, indent=4)
-        
-
-def gml_to_geg(input_file: str, output_file: Optional[str] = None) -> nx.Graph:
-    """
-    Convert a yEd-style GML drawing to a GEG graph.
-
-    Reads node positions and bend points into a NetworkX graph; optionally
-    writes a .geg file.
-
-    Args:
-        input_file: Path to the .gml file.
-        output_file: Optional path to write the converted .geg file.
-
-    Returns:
-        The converted NetworkX graph.
-    """
-    G = nx.read_gml(input_file, label=None)
-
-    if G.is_multigraph():
-        H = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()
-    else:
-        H = nx.DiGraph() if G.is_directed() else nx.Graph()
-
-    H.graph.update(G.graph)
-
-    for n, attrs in G.nodes(data=True):
-        g = attrs.get('graphics', {})
-        x, y = float(g.get('x', 0)), float(g.get('y', 0))
-        node_attrs = {'position': [x, y]}
-        node_attrs['x'], node_attrs['y'] = x, y
-
-        if 'fill' in g:
-            node_attrs['colour'] = g['fill']
-        if 'type' in g:
-            node_attrs['shape'] = g['type']
-
-        H.add_node(n, **node_attrs)
-
-    for u, v, attrs in G.edges(data=True):
-        g = attrs.get('graphics', {})
-        points = g.get('Line', {}).get('point', [])
-        poly = bool(g.get('smoothBends', 0))
-
-        # Get fallback endpoints
-        x0, y0 = float(G.nodes[u]['graphics']['x']), float(G.nodes[u]['graphics']['y'])
-        x1, y1 = float(G.nodes[v]['graphics']['x']), float(G.nodes[v]['graphics']['y'])
-
-        # remove duplicate bend points
-        cleaned_points = []
-        prev = None
-        for p in points:
-            current = (float(p['x']), float(p['y']))
-            if current != prev:
-                cleaned_points.append(p)
-            prev = current
-
-        points = cleaned_points
-
-        # Build SVG path
-        if not points:
-            path = f"M{x0},{y0} L{x1},{y1}"
-        elif len(points) == 1:
-            path = f"M{x0},{y0} L{x1},{y1}"
-        else:
-            segs = [f"M{points[0]['x']},{points[0]['y']}"]
-            segs += [f"L{p['x']},{p['y']}" for p in points[1:]]
-            path = " ".join(segs)
-
-        # path = clean_svg_path(path)
-
-        edge_attrs = {
-            'polyline': poly,
-            'path': path
-        }
-
-        H.add_edge(u, v, **edge_attrs)
-
-    if output_file:
-        write_geg(H, output_file)
-    return H
-
-
-def graphml_to_geg(input_file: str, output_file: Optional[str] = None) -> nx.Graph:
-    """
-    Convert a GraphML drawing to a GEG graph.
-
-    Uses the local GraphML reader to preserve drawing attributes; optionally
-    writes a .geg file.
-
-    Args:
-        input_file: Path to the .graphml file.
-        output_file: Optional path to write the converted .geg file.
-
-    Returns:
-        The converted NetworkX graph.
-    """
-
-    G = pg.read_graphml(input_file)
-
-    
-    if G.is_multigraph():
-        H = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()
-    else:
-        H = nx.DiGraph()       if G.is_directed() else nx.Graph()
-
-    # copy graph‐level metadata
-    H.graph.update(G.graph)
-
-
-    for n, attrs in G.nodes(data=True):
-        x, y = attrs['x'], attrs['y']
-        node_attrs = {
-            'position': [x, y]
-        }
-        node_attrs['x'], node_attrs['y'] = x, y
-
-        if 'color' in attrs:
-            node_attrs['colour'] = attrs['color']
-        # preserve shape
-        if 'shape' in attrs:
-            node_attrs['shape'] = attrs['shape']
-        H.add_node(n, **node_attrs)
-
-
-    for u, v, attrs in G.edges(data=True):
-        poly = bool(attrs.get('polyline', False))
-        bends = attrs.get('bends', [])
-        # convert any string coords to floats
-        pts = []
-        for bx, by in bends:
-            pts.append((float(bx), float(by)))
-
-        # endpoints
-        x0, y0 = G.nodes[u]['x'], G.nodes[u]['y']
-        x1, y1 = G.nodes[v]['x'], G.nodes[v]['y']
-
-        # build the SVG path
-        if not poly:
-            path = f"M{x0},{y0} L{x1},{y1}"
-        else:
-            segs = [f"M{x0},{y0}"]
-            for bx, by in pts:
-                segs.append(f"L{bx},{by}")
-            segs.append(f"L{x1},{y1}")
-            path = " ".join(segs)
-
-        # create the attrs for H
-        edge_attrs = {
-            'polyline': poly,
-            'path': path
-        }
-
-        if 'id' in attrs:
-            edge_attrs['id'] = attrs['id']
-
-        H.add_edge(u, v, **edge_attrs)
-
-    if output_file:
-        write_geg(H, output_file)
-    return H
 
 
 
