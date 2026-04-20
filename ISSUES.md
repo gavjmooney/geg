@@ -73,4 +73,4 @@ Canonical helpers now live in `geg/_geometry.py` and `geg/_paths.py` (added in P
 - [ ] Path linearisation in `geg_parser.approximate_edge_polyline` and `edge_crossings.flatten_path_to_lines` — replace with `_paths.flatten_path_to_polyline` / `_paths.flatten_path_to_segments` / `_paths.edge_polyline`.
 - [ ] `_squared_distance` in `gabriel_ratio.py` duplicates `_geometry.squared_distance`.
 - [ ] Segment-intersection / bbox-overlap helpers in `edge_crossings.py` (`bboxes_intersect`, `check_intersection`) — replace with `_geometry.bboxes_intersect` / `_geometry.segment_intersection`.
-- [ ] Multiple direct `svgpathtools.parse_path` call-sites (5 modules) — route through `_paths.parse_path` (or one of the flatten helpers).
+- [ ] Multiple direct `svgpathtools.parse_path` call-sites — route through `_paths.parse_path` (or one of the flatten helpers). Updated: `node_resolution` no longer uses `math.hypot` directly (uses `_geometry.distance`).
