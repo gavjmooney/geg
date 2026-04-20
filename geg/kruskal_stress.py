@@ -51,7 +51,14 @@ def kruskal_stress(G: nx.Graph) -> float:
     if G.number_of_nodes() <= 1:
         return 1.0
 
-    components = [G.subgraph(c).copy() for c in nx.connected_components(G.to_undirected())]
+    # Kruskal stress compares Euclidean distance (symmetric) to graph-theoretic
+    # distance. On a DiGraph, shortest-path reachability becomes asymmetric
+    # and sinks can't reach anyone, which breaks the pairwise distance matrix.
+    # Treat the graph as undirected for the metric computation.
+    if G.is_directed():
+        G = G.to_undirected(as_view=True)
+
+    components = [G.subgraph(c).copy() for c in nx.connected_components(G)]
     if len(components) == 1:
         return _connected_kruskal(G)
 

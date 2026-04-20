@@ -155,3 +155,32 @@ class TestDisconnected:
         G.add_edges_from([("a", "b"), ("c", "d")])
         result = kruskal_stress(G)
         assert 0.0 <= result <= 1.0
+
+
+class TestDirectedGraph:
+    def test_directed_path_no_key_error(self):
+        """Regression: on a DiGraph, all_pairs_shortest_path_length is
+        asymmetric, so naive pairwise lookups hit KeyError. Stress should
+        treat the graph as undirected for this computation.
+        """
+        G = nx.DiGraph()
+        G.add_node("n0", x=0.0, y=0.0)
+        G.add_node("n1", x=400.0, y=400.0)
+        G.add_node("n2", x=400.0, y=0.0)
+        G.add_edge("n1", "n2")  # n0 is a sink under directed semantics
+        G.add_edge("n2", "n0")
+        # Path n1 -> n2 -> n0 with perfect right-angle distances; stress = 1.
+        assert kruskal_stress(G) == pytest.approx(1.0)
+
+    def test_matches_undirected_equivalent(self):
+        """Kruskal stress must be identical on a DiGraph and its undirected
+        twin: stress compares Euclidean distance (symmetric) to graph
+        distance."""
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (2.0, 0.0)}
+        DG = nx.DiGraph()
+        for n, (x, y) in coords.items():
+            DG.add_node(n, x=x, y=y)
+        DG.add_edges_from([("a", "b"), ("b", "c")])
+
+        UG = DG.to_undirected()
+        assert kruskal_stress(DG) == pytest.approx(kruskal_stress(UG))

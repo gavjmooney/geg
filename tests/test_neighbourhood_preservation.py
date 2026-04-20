@@ -157,3 +157,30 @@ class TestDisconnected:
         # No edges; every node is isolated.
         result = NP(G)
         assert 0.0 <= result <= 1.0
+
+
+class TestDirectedGraph:
+    def test_directed_graph_does_not_error(self):
+        """Regression: NP used to build an asymmetric adjacency matrix on
+        DiGraphs, producing artificially low scores that didn't reflect
+        the visual neighbourhood preservation."""
+        G = nx.DiGraph()
+        G.add_node("n0", x=0.0, y=0.0)
+        G.add_node("n1", x=400.0, y=400.0)
+        G.add_node("n2", x=400.0, y=0.0)
+        G.add_edge("n1", "n2")
+        G.add_edge("n2", "n0")
+        result = NP(G)
+        assert 0.0 <= result <= 1.0
+
+    def test_matches_undirected_equivalent(self):
+        """NP should be identical on a DiGraph and its undirected twin:
+        neighbourhood similarity is a symmetric concept."""
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (2.0, 0.0), "d": (3.0, 0.0)}
+        DG = nx.DiGraph()
+        for n, (x, y) in coords.items():
+            DG.add_node(n, x=x, y=y)
+        DG.add_edges_from([("a", "b"), ("b", "c"), ("c", "d")])
+
+        UG = DG.to_undirected()
+        assert NP(DG) == pytest.approx(NP(UG))

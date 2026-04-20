@@ -50,6 +50,8 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
 
 ### Fixed
 
+- **`kruskal_stress`**: no longer raises `KeyError` on directed graphs with a sink (or any DiGraph where forward reachability is asymmetric). Stress compares Euclidean distance (symmetric) to graph-theoretic distance, so the metric now operates on an undirected view of the input. Scores on directed inputs match those of their undirected twin.
+- **`neighbourhood_preservation`**: same fix — now operates on an undirected view of directed inputs. Previously built an asymmetric adjacency matrix against a symmetric k-NN matrix, artificially depressing Jaccard scores on DiGraphs.
 - **`kruskal_stress`**: handles disconnected drawings per paper §3.3 (weighted sum by per-component convex-hull area; singleton components contribute nothing). Previously raised `KeyError` on any drawing with more than one connected component.
 - **`neighbourhood_preservation`**: handles disconnected drawings per paper §3.3 (weighted sum by per-component convex-hull area). Previously the k-NN matrix was computed over the full layout, which could draw neighbours across component boundaries and artificially depress the score.
 - **`aspect_ratio`**: degenerate bounding boxes (h = 0 or w = 0) now return `1.0` per paper §3.2. Previously returned `0.0` (worst), which contradicted the spec.

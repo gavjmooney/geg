@@ -59,7 +59,13 @@ def neighbourhood_preservation(G: nx.Graph, k: Optional[int] = None) -> float:
     if G.number_of_nodes() <= 1:
         return 1.0
 
-    components = [G.subgraph(c).copy() for c in nx.connected_components(G.to_undirected())]
+    # NP compares topological adjacency to *geometric* k-NN (symmetric by
+    # construction). Directed adjacency would give a lopsided match, so
+    # treat the graph as undirected for the metric.
+    if G.is_directed():
+        G = G.to_undirected(as_view=True)
+
+    components = [G.subgraph(c).copy() for c in nx.connected_components(G)]
     if len(components) == 1:
         return _connected_np(G, k)
 

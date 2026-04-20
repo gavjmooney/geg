@@ -33,6 +33,12 @@ Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`
 - **Fix:** Removed.
 - **TVCG-impact:** **no** — output only; `edge_crossings_bezier` was experimental.
 
+### KSM-2 / NP-2 — DiGraph inputs crash / mis-score  [FIXED]
+- **Where:** `geg/kruskal_stress.py:_connected_kruskal` and `geg/neighbourhood_preservation.py:_connected_np`.
+- **What:** On a directed graph, `nx.all_pairs_shortest_path_length(G)` only records forward reachability, so sinks had no outbound entries and the pairwise distance matrix raised `KeyError`. NP built an asymmetric adjacency against a symmetric k-NN matrix, producing artificially low Jaccard scores.
+- **Fix:** Both metrics now call `G.to_undirected(as_view=True)` at the top before component decomposition; the metric definitions are symmetric (Euclidean distance / neighbourhood), so direction is irrelevant.
+- **TVCG-impact:** **unknown.** The published corpus may include directed drawings; if so, NP scores for those will increase. KSM would have previously errored on any DiGraph with a sink, so any published KSM value on a directed drawing was already using some workaround.
+
 ### PG-1 — Dead inline test / commented-out scratch in `parse_graph.py`  [FIXED]
 - **Where:** `geg/parse_graph.py` lines 226–328 (old).
 - **What:** `test_graph_read_write()` referencing non-existent files, plus a block of commented-out scratch code.
