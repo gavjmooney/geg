@@ -107,6 +107,14 @@ class TestKnownDeviations:
 
 
 class TestInvariants:
+    """Node uniformity is translation- and uniform-scale-invariant: the
+    axis-aligned grid scales and shifts with the bounding box, so each
+    node stays in the same cell. It is *not* rotation-invariant in
+    general — the grid is axis-aligned to the bbox, not to the drawing,
+    so rotating the layout redraws the cell boundaries relative to the
+    nodes and node↔cell membership can change. No arbitrary-rotation
+    test is included for this reason."""
+
     def test_translation_invariant(self):
         coords = {
             "a": (0.0, 0.0), "b": (1.0, 0.0),

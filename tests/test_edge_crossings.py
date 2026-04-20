@@ -150,3 +150,48 @@ class TestClampAtZero:
         G.add_edge("c", "d", polyline=True, path="M0,1 L3,-1 L7,2 L10,1")
         # c_max=1, but these weave → c >= 2. EC clamps at 0.
         assert edge_crossings(G) == pytest.approx(0.0)
+
+
+class TestInvariants:
+    """EC counts crossings between edge pairs. Whether two line segments
+    cross is preserved by every rigid motion (translation, rotation,
+    reflection) and by uniform scaling. The `c_max` denominator depends
+    only on `|E|` and the degree sequence — both pure topological
+    quantities — so EC itself is invariant.
+    """
+
+    def _k4_square(self, coords):
+        G = _layout(coords)
+        for u, v in [("a", "b"), ("b", "c"), ("c", "d"), ("d", "a"),
+                      ("a", "c"), ("b", "d")]:
+            G.add_edge(u, v, path=_straight(u, v, coords))
+        return G
+
+    def _baseline(self):
+        return {
+            "a": (0.0, 0.0), "b": (1.0, 0.0),
+            "c": (1.0, 1.0), "d": (0.0, 1.0),
+        }
+
+    def test_translation_invariant(self):
+        base = self._baseline()
+        shifted = {n: (x + 100.0, y + 50.0) for n, (x, y) in base.items()}
+        assert edge_crossings(self._k4_square(base)) == pytest.approx(
+            edge_crossings(self._k4_square(shifted))
+        )
+
+    def test_uniform_scale_invariant(self):
+        base = self._baseline()
+        scaled = {n: (x * 42.0, y * 42.0) for n, (x, y) in base.items()}
+        assert edge_crossings(self._k4_square(base)) == pytest.approx(
+            edge_crossings(self._k4_square(scaled))
+        )
+
+    def test_arbitrary_rotation_invariant(self):
+        theta = math.radians(37.0)
+        c, s = math.cos(theta), math.sin(theta)
+        base = self._baseline()
+        rotated = {n: (x * c - y * s, x * s + y * c) for n, (x, y) in base.items()}
+        assert edge_crossings(self._k4_square(base)) == pytest.approx(
+            edge_crossings(self._k4_square(rotated))
+        )

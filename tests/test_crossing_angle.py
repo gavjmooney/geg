@@ -120,3 +120,51 @@ class TestOutputRange:
         G = nx.Graph()
         score = crossing_angle(G, crossings=[((0.0, 0.0), 90.0), ((1.0, 0.0), 90.0)])
         assert score == pytest.approx(1.0)
+
+
+class TestInvariants:
+    """CA depends only on the angles at each crossing, which are preserved
+    by translation, uniform scale, and arbitrary rotation. Tested
+    end-to-end through edge_crossings so the rotation carries through the
+    geometric intersection logic, not just the aggregation step.
+    """
+
+    def _layout_with_crossing(self, coords):
+        """Horizontal edge a-b + diagonal c-d crossing it at (1, 0) at 45°."""
+        import math as _m
+        G = _layout(coords)
+        for u, v in [("a", "b"), ("c", "d")]:
+            x0, y0 = coords[u]
+            x1, y1 = coords[v]
+            G.add_edge(u, v, path=f"M{x0},{y0} L{x1},{y1}")
+        return G
+
+    def _baseline_coords(self):
+        return {
+            "a": (0.0, 0.0), "b": (2.0, 0.0),
+            "c": (0.0, -1.0), "d": (2.0, 1.0),
+        }
+
+    def test_translation_invariant(self):
+        base = self._baseline_coords()
+        shifted = {n: (x + 50.0, y - 20.0) for n, (x, y) in base.items()}
+        G1 = self._layout_with_crossing(base)
+        G2 = self._layout_with_crossing(shifted)
+        assert crossing_angle(G1) == pytest.approx(crossing_angle(G2), rel=1e-6)
+
+    def test_uniform_scale_invariant(self):
+        base = self._baseline_coords()
+        scaled = {n: (x * 17.3, y * 17.3) for n, (x, y) in base.items()}
+        G1 = self._layout_with_crossing(base)
+        G2 = self._layout_with_crossing(scaled)
+        assert crossing_angle(G1) == pytest.approx(crossing_angle(G2), rel=1e-6)
+
+    def test_arbitrary_rotation_invariant(self):
+        import math as _m
+        theta = _m.radians(37.0)
+        c, s = _m.cos(theta), _m.sin(theta)
+        base = self._baseline_coords()
+        rotated = {n: (x * c - y * s, x * s + y * c) for n, (x, y) in base.items()}
+        G1 = self._layout_with_crossing(base)
+        G2 = self._layout_with_crossing(rotated)
+        assert crossing_angle(G1) == pytest.approx(crossing_angle(G2), rel=1e-6)

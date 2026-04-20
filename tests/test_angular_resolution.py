@@ -183,3 +183,59 @@ class TestCanonicalAlias:
         )
         assert callable(reverse_svg_path)
         assert callable(orient_svg_path_for_node)
+
+
+class TestInvariants:
+    """AR is defined as the shortfall of actual-gap vs ideal-gap at each
+    vertex, where gaps are angles between incident edges. Angles between
+    vectors are preserved by translation, uniform scale, and arbitrary
+    rotation — so AR should be invariant under all three isometries plus
+    uniform scale.
+    """
+
+    def _t_shape_coords(self):
+        # degree-3 vertex, gaps [90°, 90°, 180°]; min-angle AR = 3/4.
+        return {
+            "c": (0.0, 0.0),
+            "east": (1.0, 0.0),
+            "north": (0.0, -1.0),
+            "west": (-1.0, 0.0),
+        }
+
+    def _build(self, coords):
+        G = _layout(coords)
+        for leaf in ("east", "north", "west"):
+            G.add_edge("c", leaf, path=_straight("c", leaf, coords))
+        return G
+
+    def test_translation_invariant(self):
+        coords = self._t_shape_coords()
+        shifted = {n: (x + 100.0, y - 37.0) for n, (x, y) in coords.items()}
+        # rebuild paths from translated coords so M…L… strings match.
+        G1 = self._build(coords)
+        G2 = self._build(shifted)
+        assert angular_resolution_min_angle(G1) == pytest.approx(
+            angular_resolution_min_angle(G2)
+        )
+
+    def test_uniform_scale_invariant(self):
+        coords = self._t_shape_coords()
+        scaled = {n: (x * 17.3, y * 17.3) for n, (x, y) in coords.items()}
+        G1 = self._build(coords)
+        G2 = self._build(scaled)
+        assert angular_resolution_min_angle(G1) == pytest.approx(
+            angular_resolution_min_angle(G2)
+        )
+
+    def test_arbitrary_rotation_invariant(self):
+        # Rotate by 37° about the origin: (x, y) -> (x cos θ - y sin θ,
+        # x sin θ + y cos θ). Angles between incident edges are preserved.
+        theta = math.radians(37.0)
+        c, s = math.cos(theta), math.sin(theta)
+        coords = self._t_shape_coords()
+        rotated = {n: (x * c - y * s, x * s + y * c) for n, (x, y) in coords.items()}
+        G1 = self._build(coords)
+        G2 = self._build(rotated)
+        assert angular_resolution_min_angle(G1) == pytest.approx(
+            angular_resolution_min_angle(G2)
+        )

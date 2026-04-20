@@ -78,6 +78,14 @@ class TestInvariants:
         G2 = _layout({n: (x * 42.7, y * 42.7) for n, (x, y) in coords.items()})
         assert node_resolution(G1) == pytest.approx(node_resolution(G2))
 
+    def test_translation_invariant(self):
+        # NR is min / max pairwise distance; translation leaves every
+        # pairwise distance unchanged.
+        coords = {"a": (0.0, 0.0), "b": (3.0, 0.0), "c": (0.0, 4.0)}
+        G1 = _layout(coords)
+        G2 = _layout({n: (x + 100.0, y - 37.0) for n, (x, y) in coords.items()})
+        assert node_resolution(G1) == pytest.approx(node_resolution(G2))
+
     def test_rotation_invariant(self):
         # Rotate 3-4-5 triangle by 37° about origin.
         theta = math.radians(37.0)

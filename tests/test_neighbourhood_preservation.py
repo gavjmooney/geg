@@ -129,6 +129,21 @@ class TestInvariants:
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert NP(G1) == pytest.approx(NP(G2))
 
+    def test_arbitrary_rotation_invariant(self):
+        """k-NN ranks depend only on pairwise Euclidean distances, which
+        rotation preserves — so the K matrix is identical before and
+        after the rotation, and Jaccard(A, K) is unchanged."""
+        import math
+        theta = math.radians(37.0)
+        c, s = math.cos(theta), math.sin(theta)
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0), "d": (4.0, 0.0)}
+        rotated = {n: (x * c - y * s, x * s + y * c) for n, (x, y) in coords.items()}
+        G1 = _layout(coords)
+        G1.add_edges_from([("a", "b"), ("b", "c"), ("c", "d")])
+        G2 = _layout(rotated)
+        G2.add_edges_from([("a", "b"), ("b", "c"), ("c", "d")])
+        assert NP(G1) == pytest.approx(NP(G2))
+
 
 class TestDisconnected:
     """Paper §3.3: NP on disconnected drawings is a weighted sum over

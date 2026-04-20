@@ -100,6 +100,13 @@ class TestInvariants:
         G2 = _layout({n: (x * 42.0, y * 42.0) for n, (x, y) in coords.items()})
         assert aspect_ratio(G1) == pytest.approx(aspect_ratio(G2))
 
+    # Note on rotation invariance: Asp is *not* invariant under arbitrary
+    # rotations — it reads dimensions off the axis-aligned bounding box,
+    # which changes when the drawing rotates (e.g. a long thin rectangle
+    # rotated 45° has a near-square axis-aligned bbox). Only the 90° case
+    # preserves the Asp value, because w and h swap and the paper formula
+    # is symmetric in min/max. Tested directly:
+
     def test_swapping_width_and_height_gives_same_value(self):
         """Paper definition is symmetric under 90° rotation: w↔h → Asp same."""
         wide = _layout({

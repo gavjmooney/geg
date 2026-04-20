@@ -131,6 +131,16 @@ class TestRadiusAware:
         assert node_edge_occlusion(G) == pytest.approx(1.0)
 
 
+# Note on rotation invariance: NEO is translation- and uniform-scale-
+# invariant (both node-to-edge distances and the ε = 0.02 · bbox_diag
+# scale factor transform identically), but *not* rotation-invariant in
+# general — the axis-aligned bounding-box diagonal depends on the
+# drawing's orientation, so ε changes with rotation even though node-to-
+# edge distances do not. Only rotations that preserve the axis-aligned
+# bbox (e.g. 90° for shapes with matching width/height) leave the score
+# unchanged. No invariance tests added for this reason.
+
+
 class TestCurvedEdges:
     def test_polyline_detected_over_a_bend(self):
         """Straight chord misses the node by a mile, but the polyline bend

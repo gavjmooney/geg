@@ -112,6 +112,20 @@ class TestInvariants:
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert kruskal_stress(G1) == pytest.approx(kruskal_stress(G2))
 
+    def test_arbitrary_rotation_invariant(self):
+        """Pairwise Euclidean distances are rotation-invariant, so KSM is
+        too — the (graph-dist, layout-dist) pairs fed to the isotonic
+        regression are identical before and after the rotation."""
+        theta = math.radians(37.0)
+        c, s = math.cos(theta), math.sin(theta)
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        rotated = {n: (x * c - y * s, x * s + y * c) for n, (x, y) in coords.items()}
+        G1 = _layout(coords)
+        G1.add_edges_from([("a", "b"), ("b", "c")])
+        G2 = _layout(rotated)
+        G2.add_edges_from([("a", "b"), ("b", "c")])
+        assert kruskal_stress(G1) == pytest.approx(kruskal_stress(G2))
+
 
 class TestDisconnected:
     """Paper §3.3: KSM on disconnected drawings is a weighted sum over

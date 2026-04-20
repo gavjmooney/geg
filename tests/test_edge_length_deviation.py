@@ -102,11 +102,33 @@ class TestDegenerate:
 
 
 class TestInvariants:
+    """ELD compares edge lengths L(e) to the per-graph mean L_ideal via
+    relative deviations |L(e) - L_ideal| / L_ideal. Lengths are invariant
+    under translation and arbitrary rotation; uniform scaling multiplies
+    every L by the same constant so the ratios are unchanged."""
+
+    def test_translation_invariant(self):
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        G1 = _layout(coords)
+        G1.add_edges_from([("a", "b"), ("b", "c")])
+        G2 = _layout({n: (x + 100.0, y - 37.0) for n, (x, y) in coords.items()})
+        G2.add_edges_from([("a", "b"), ("b", "c")])
+        assert edge_length_deviation(G1) == pytest.approx(edge_length_deviation(G2))
+
     def test_uniform_scale_invariant(self):
-        """ELD uses relative deviations, so uniform scaling is a no-op."""
         coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
         G1 = _layout(coords)
         G1.add_edges_from([("a", "b"), ("b", "c")])
         G2 = _layout({n: (x * 42.0, y * 42.0) for n, (x, y) in coords.items()})
+        G2.add_edges_from([("a", "b"), ("b", "c")])
+        assert edge_length_deviation(G1) == pytest.approx(edge_length_deviation(G2))
+
+    def test_arbitrary_rotation_invariant(self):
+        theta = math.radians(37.0)
+        c, s = math.cos(theta), math.sin(theta)
+        coords = {"a": (0.0, 0.0), "b": (1.0, 0.0), "c": (3.0, 0.0)}
+        G1 = _layout(coords)
+        G1.add_edges_from([("a", "b"), ("b", "c")])
+        G2 = _layout({n: (x * c - y * s, x * s + y * c) for n, (x, y) in coords.items()})
         G2.add_edges_from([("a", "b"), ("b", "c")])
         assert edge_length_deviation(G1) == pytest.approx(edge_length_deviation(G2))

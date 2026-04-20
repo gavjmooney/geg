@@ -117,6 +117,13 @@ class TestInvariants:
         G2.add_edge("a", "b")
         assert edge_orthogonality(G1) == pytest.approx(edge_orthogonality(G2))
 
+    # Note on rotation invariance: EO measures how close each edge is to
+    # the horizontal or vertical axis (deviation normalised by 45°). It is
+    # *not* invariant under arbitrary rotations — rotating by e.g. 30°
+    # turns a perfect horizontal edge into a 30° edge, whose deviation is
+    # 30/45. Only 90° rotations preserve the metric (horizontal ↔ vertical
+    # and both count as orthogonal). Tested directly:
+
     def test_90_degree_rotation_gives_same_value(self):
         """Rotating 90° swaps horizontal ↔ vertical; both are orthogonal,
         so the metric is invariant under 90° rotations."""
