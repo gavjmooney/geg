@@ -102,3 +102,21 @@ class TestEndToEnd:
         G.add_edge("a", "b", path="M0,0 L2,0")
         G.add_edge("c", "d", path="M0,-1 L2,1")
         assert crossing_angle(G) == pytest.approx(0.5, rel=1e-6)
+
+
+class TestOutputRange:
+    def test_obtuse_precomputed_angles_clamped(self):
+        """A caller passing a precomputed crossings list with an angle >
+        ideal must still receive a score in [0, 1]; the public formula can
+        otherwise go above 1."""
+        import networkx as nx
+        G = nx.Graph()
+        # crossings list: (position, angle_in_degrees) — angle deliberately obtuse.
+        score = crossing_angle(G, crossings=[((0.0, 0.0), 120.0)])
+        assert 0.0 <= score <= 1.0
+
+    def test_perfect_90_degree_is_one(self):
+        import networkx as nx
+        G = nx.Graph()
+        score = crossing_angle(G, crossings=[((0.0, 0.0), 90.0), ((1.0, 0.0), 90.0)])
+        assert score == pytest.approx(1.0)

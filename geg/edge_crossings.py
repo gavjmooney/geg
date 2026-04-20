@@ -14,7 +14,7 @@ counting near-parallel overlaps as separate crossings.
 import itertools
 import math
 import xml.etree.ElementTree as ET
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Iterable, List, Tuple, Union
 
 import networkx as nx
 from svgpathtools import Path

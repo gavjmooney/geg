@@ -1,7 +1,7 @@
 from . import geg_parser
 import math
 import networkx as nx
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 def node_uniformity(
     G: nx.Graph,

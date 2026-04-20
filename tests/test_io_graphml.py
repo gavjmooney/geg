@@ -289,3 +289,23 @@ class TestWriteGraphMLYedCornerAnchor:
         for n in G.nodes:
             assert G2.nodes[n]["x"] == pytest.approx(G.nodes[n]["x"])
             assert G2.nodes[n]["y"] == pytest.approx(G.nodes[n]["y"])
+
+
+class TestWriteGraphMLMultigraph:
+    def test_handles_multigraph(self, tmp_path):
+        """write_graphml used to crash on MultiGraphs because the legacy
+        loop did `G.edges[u, v]` after iterating `(u, v)` pairs, which
+        fails on multigraphs (they require a key). Regression: both
+        parallel edges must round-trip."""
+        import networkx as nx
+        G = nx.MultiGraph()
+        G.add_node(0, x=0.0, y=0.0)
+        G.add_node(1, x=100.0, y=0.0)
+        G.add_edge(0, 1)
+        G.add_edge(0, 1)  # parallel
+        out = tmp_path / "mg.graphml"
+        write_graphml(G, str(out))
+        assert out.exists()
+        # The XML should contain two <edge ... source="0" target="1"> entries.
+        xml = out.read_text()
+        assert xml.count('source="0"') == 2

@@ -33,7 +33,11 @@ def crossing_angle(
     if not crossings:
         return 1.0
 
+    # edge_crossings returns acute angles (<= 90°) so the paper's
+    # shortfall `(ideal - angle)` is non-negative by construction. A caller
+    # passing a pre-computed list of angles > ideal would otherwise drive
+    # the score above 1; clamp defensively so the metric stays in [0, 1].
     shortfall_sum = sum(
-        (ideal_angle - angle) / ideal_angle for _, angle in crossings
+        max(0.0, (ideal_angle - angle) / ideal_angle) for _, angle in crossings
     )
-    return 1.0 - shortfall_sum / len(crossings)
+    return max(0.0, 1.0 - shortfall_sum / len(crossings))

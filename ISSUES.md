@@ -33,6 +33,24 @@ Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`
 - **Fix:** Removed.
 - **TVCG-impact:** **no** — output only; `edge_crossings_bezier` was experimental.
 
+### CA-1 — `crossing_angle` could return >1 on user-supplied crossings  [FIXED]
+- **Where:** `geg/crossing_angle.py:36-39`.
+- **What:** The formula `1 - shortfall/len(crossings)` with `shortfall = sum((ideal - angle) / ideal)` goes above 1 if any per-crossing `angle > ideal`. The canonical path via `edge_crossings(return_crossings=True)` only emits acute angles (≤ 90°) so was safe, but a caller passing a precomputed list with obtuse angles would exit [0, 1].
+- **Fix:** Clamp the per-crossing shortfall at 0 and the final score at [0, 1]. Added regression tests.
+- **TVCG-impact:** **no** — the paper corpus was computed via the canonical path.
+
+### GML-2 — `write_graphml` crashes on MultiGraph inputs  [FIXED]
+- **Where:** `geg/io/graphml.py:269-270`.
+- **What:** The writer iterated `for u, v in G.edges()` then subscripted `G.edges[u, v]`, which raises on MultiGraph (needs an edge key).
+- **Fix:** Iterate `for u, v, attrs in G.edges(data=True)`. Parallel edges now round-trip as separate `<edge>` elements.
+- **TVCG-impact:** **no** — TVCG corpus is simple graphs.
+
+### GEG-1 — `read_geg` re-parsed the file for multigraph detection  [FIXED]
+- **Where:** `geg/io/geg.py:105-107`.
+- **What:** The reader parsed JSON, then called `is_multigraph_file(path)` which opened and parsed the file again to decide the graph class.
+- **Fix:** Extracted `_data_is_multigraph(data)` helper operating on the already-parsed dict; `read_geg` calls that. Public `is_multigraph_file(path)` preserved as a standalone file-level check.
+- **TVCG-impact:** **no** — doubles I/O cost but produces identical output.
+
 ### GML-1 — yEd GraphML stores node x/y as top-left, not centre  [FIXED]
 - **Where:** `geg/io/graphml.py:read_graphml`.
 - **What:** yEd's GraphML export puts `x`/`y` at the top-left corner of each node's bounding box, while edge bends are in absolute drawing coordinates. Treating x/y as the node centre (as every other source and our own writer do) misaligns the drawing by (width/2, height/2) and makes orthogonal L-shaped routings look diagonal.

@@ -266,8 +266,10 @@ def write_graphml(
         node.appendChild(data)
         graph_node.appendChild(node)
 
-    for u, v in G.edges():
-        attrs = G.edges[u, v]
+    # `data=True` yields (u, v, attrs) on simple graphs and (u, v, attrs)
+    # on multigraphs too (with parallel edges appearing separately); avoids
+    # the `G.edges[u, v]` subscript that fails on MultiGraphs.
+    for u, v, attrs in G.edges(data=True):
         edge = doc.createElement("edge")
         edge.setAttribute("source", f"n{u}" if gml_format else str(u))
         edge.setAttribute("target", f"n{v}" if gml_format else str(v))

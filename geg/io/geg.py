@@ -35,11 +35,9 @@ def has_self_loops_file(input_file: str) -> bool:
     return False
 
 
-def is_multigraph_file(input_file: str) -> bool:
-    """Return True iff the GEG file has more than one edge between the same
-    pair (normalised as unordered for undirected graphs)."""
-    with open(input_file, "r") as f:
-        data = json.load(f)
+def _data_is_multigraph(data: dict) -> bool:
+    """True iff the parsed GEG `data` describes a multigraph (more than one
+    edge between some pair of endpoints, unordered for undirected graphs)."""
     directed = _coerce_bool(data.get("graph", {}).get("directed", False))
     seen: dict = {}
     for edge in data.get("edges", []):
@@ -50,6 +48,14 @@ def is_multigraph_file(input_file: str) -> bool:
         if seen[key] > 1:
             return True
     return False
+
+
+def is_multigraph_file(input_file: str) -> bool:
+    """Return True iff the GEG file has more than one edge between the same
+    pair (normalised as unordered for undirected graphs)."""
+    with open(input_file, "r") as f:
+        data = json.load(f)
+    return _data_is_multigraph(data)
 
 
 def _extract_xy(attrs: dict) -> tuple:
@@ -103,7 +109,7 @@ def read_geg(input_file: str) -> nx.Graph:
         data = json.load(f)
 
     directed = _coerce_bool(data.get("graph", {}).get("directed", False))
-    if is_multigraph_file(input_file):
+    if _data_is_multigraph(data):
         G = nx.MultiDiGraph() if directed else nx.MultiGraph()
     else:
         G = nx.DiGraph() if directed else nx.Graph()

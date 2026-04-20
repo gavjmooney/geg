@@ -1,5 +1,5 @@
 # GEG Encodes Graphs is a file format designed by Gavin J. Mooney.
-# It is based on JSON and stores graph drawings with attrbiutes,
+# It is based on JSON and stores graph drawings with attributes,
 # including curved edges which follow the SVG path format.
 # https://www.gavjmooney.com
 
@@ -13,7 +13,7 @@ re-exports below keep existing imports like
 import math
 import re
 import xml.dom.minidom
-from typing import Any, Dict, Hashable, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Hashable, List, Optional, Tuple
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 import networkx as nx
