@@ -101,15 +101,50 @@ def find_drawings(root: Path) -> Iterable[Path]:
 # ---------- Metrics ----------
 
 def compute_metrics(G: nx.Graph) -> Dict[str, float]:
-    """Compute every metric on `G`. Any per-metric exception becomes NaN
-    so one bad metric never kills the rest of the row."""
+    """Compute every metric on `G`, sharing expensive intermediates.
+
+    Shared work computed once per call:
+      - `get_bounding_box(G)` — used by `aspect_ratio`, `node_uniformity`,
+        and `node_edge_occlusion`. Internally runs `curves_promotion(G)`.
+      - `edge_crossings(G, return_crossings=True)` — gives both the
+        `edge_crossings` score and the crossings list that
+        `crossing_angle` needs.
+
+    Any per-metric exception becomes NaN so one bad metric never kills the
+    rest of the row.
+    """
     out: Dict[str, float] = {}
-    for name, fn in METRICS:
+
+    try:
+        bbox = geg.get_bounding_box(G)
+    except Exception as exc:
+        logging.warning("get_bounding_box failed: %s", exc)
+        bbox = None
+
+    try:
+        ec_score, crossings = geg.edge_crossings(G, return_crossings=True)
+    except Exception as exc:
+        logging.warning("edge_crossings failed: %s", exc)
+        ec_score, crossings = float("nan"), None
+
+    def _safe(name: str, fn: Callable[[], float]) -> None:
         try:
-            out[name] = float(fn(G))
-        except Exception as exc:  # narrow: keep the rest of the row alive
+            out[name] = float(fn())
+        except Exception as exc:
             logging.warning("metric %s failed: %s", name, exc)
             out[name] = float("nan")
+
+    _safe("angular_resolution", lambda: geg.angular_resolution_min_angle(G))
+    _safe("aspect_ratio", lambda: geg.aspect_ratio(G, bbox=bbox))
+    _safe("crossing_angle", lambda: geg.crossing_angle(G, crossings=crossings))
+    out["edge_crossings"] = ec_score
+    _safe("edge_length_deviation", lambda: geg.edge_length_deviation(G))
+    _safe("edge_orthogonality", lambda: geg.edge_orthogonality(G))
+    _safe("kruskal_stress", lambda: geg.kruskal_stress(G))
+    _safe("neighbourhood_preservation", lambda: geg.neighbourhood_preservation(G))
+    _safe("node_edge_occlusion", lambda: geg.node_edge_occlusion(G, bbox=bbox))
+    _safe("node_resolution", lambda: geg.node_resolution(G))
+    _safe("node_uniformity", lambda: geg.node_uniformity(G, bbox=bbox))
     return out
 
 

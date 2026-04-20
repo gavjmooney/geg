@@ -33,6 +33,7 @@ along the node-to-node chord.
 from __future__ import annotations
 
 import math
+from typing import Optional, Tuple
 
 import networkx as nx
 
@@ -88,6 +89,8 @@ def node_edge_occlusion(
     G: nx.Graph,
     epsilon_fraction: float = 0.02,
     samples_per_curve: int = 50,
+    *,
+    bbox: Optional[Tuple[float, float, float, float]] = None,
 ) -> float:
     """Node-Edge Occlusion score in [0, 1] (1 = no occlusion).
 
@@ -101,6 +104,8 @@ def node_edge_occlusion(
             overlap).
         samples_per_curve: Curve-sampling density used to flatten Bezier
             segments into straight pieces before the distance test.
+        bbox: Optional pre-computed (min_x, min_y, max_x, max_y). If None,
+            computed via `get_bounding_box(G)`.
 
     Returns:
         Float in [0, 1]. Returns 1.0 for degenerate graphs (fewer than two
@@ -120,7 +125,9 @@ def node_edge_occlusion(
     if len(nodes) < 2:
         return 1.0
 
-    min_x, min_y, max_x, max_y = get_bounding_box(G)
+    if bbox is None:
+        bbox = get_bounding_box(G)
+    min_x, min_y, max_x, max_y = bbox
     diag = math.hypot(max_x - min_x, max_y - min_y)
     if diag < 1e-9:
         return 1.0

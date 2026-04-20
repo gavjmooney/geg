@@ -1,9 +1,13 @@
 from . import geg_parser
 import math
 import networkx as nx
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-def node_uniformity(G: nx.Graph) -> float:
+def node_uniformity(
+    G: nx.Graph,
+    *,
+    bbox: Optional[Tuple[float, float, float, float]] = None,
+) -> float:
     """
     Node placement uniformity in [0, 1] using a grid occupancy model.
 
@@ -13,6 +17,8 @@ def node_uniformity(G: nx.Graph) -> float:
 
     Args:
         G: A NetworkX graph with node coordinates 'x' and 'y'.
+        bbox: Optional pre-computed (min_x, min_y, max_x, max_y). If None,
+            computed via `geg_parser.get_bounding_box(G)`.
 
     Returns:
         A float in [0, 1], where higher indicates more uniform distribution.
@@ -24,7 +30,9 @@ def node_uniformity(G: nx.Graph) -> float:
         return 1.0
 
     # Bounding box (includes curves)
-    x_min, y_min, x_max, y_max = geg_parser.get_bounding_box(G)
+    if bbox is None:
+        bbox = geg_parser.get_bounding_box(G)
+    x_min, y_min, x_max, y_max = bbox
     width, height = x_max - x_min, y_max - y_min
 
     # If all nodes are on top of each other
