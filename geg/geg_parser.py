@@ -30,8 +30,8 @@ from .io.geg import (
     read_geg,
     write_geg,
 )
-from .io.gml import gml_to_geg
-from .io.graphml import graphml_to_geg
+from .io.gml import gml_to_geg, read_gml, write_gml
+from .io.graphml import graphml_to_geg, read_graphml, write_graphml
 
 
 def get_convex_hull_area(G: nx.Graph, tol: float = 1e-6) -> float:

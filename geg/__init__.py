@@ -1,5 +1,7 @@
 from .geg_parser import (
-    read_geg, write_geg, gml_to_geg, graphml_to_geg,
+    read_geg, write_geg,
+    read_gml, write_gml, gml_to_geg,
+    read_graphml, write_graphml, graphml_to_geg,
     get_bounding_box, to_svg, euclidean_distance,
     contains_polylines, contains_curves, contains_straight_bends,
     has_self_loops_file, has_self_loops_graph,
@@ -24,7 +26,9 @@ from .node_uniformity import node_uniformity
 
 __all__ = [
     # parser/core
-    "read_geg","write_geg","gml_to_geg","graphml_to_geg",
+    "read_geg","write_geg",
+    "read_gml","write_gml","gml_to_geg",
+    "read_graphml","write_graphml","graphml_to_geg",
     "get_bounding_box","to_svg","euclidean_distance",
     "contains_polylines","contains_curves","contains_straight_bends",
     "has_self_loops_file","has_self_loops_graph",

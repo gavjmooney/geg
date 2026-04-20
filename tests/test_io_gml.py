@@ -1,10 +1,10 @@
-"""Tests for geg.io.gml (GML → GEG conversion)."""
+"""Tests for geg.io.gml — read_gml, write_gml, and the gml_to_geg converter."""
 
 from pathlib import Path
 
 import pytest
 
-from geg import gml_to_geg, read_geg
+from geg import gml_to_geg, read_geg, read_gml, write_gml
 
 
 SAMPLE = Path(__file__).parent / "fixtures" / "io" / "sample.gml"
@@ -95,3 +95,84 @@ class TestMinimalGML:
         edge = G.edges[0, 1]
         assert edge["polyline"] is False
         assert edge["path"] == "M0.0,0.0 L1.0,0.0"
+
+
+# ---------- read_gml ----------
+
+class TestReadGML:
+    def test_extracts_node_positions(self):
+        G = read_gml(str(SAMPLE))
+        assert G.nodes[0]["x"] == 0.0
+        assert G.nodes[0]["y"] == 0.0
+        assert G.nodes[1]["x"] == 100.0
+        assert G.nodes[1]["y"] == 50.0
+
+    def test_extracts_node_dimensions(self):
+        G = read_gml(str(SAMPLE))
+        assert G.nodes[0]["width"] == 40.0
+        assert G.nodes[0]["height"] == 30.0
+        assert G.nodes[1]["width"] == 60.0
+        assert G.nodes[1]["height"] == 20.0
+
+    def test_extracts_node_colour_shape_label(self):
+        G = read_gml(str(SAMPLE))
+        assert G.nodes[0]["colour"] == "#FF0000"
+        assert G.nodes[0]["shape"] == "ellipse"
+        assert G.nodes[0]["label"] == "Alpha"
+        assert G.nodes[1]["shape"] == "rectangle"
+
+    def test_extracts_edge_bends_and_polyline(self):
+        G = read_gml(str(SAMPLE))
+        # yEd GML lists every point including endpoints in `Line`.
+        assert G.edges[0, 1]["bends"] == [
+            (0.0, 0.0), (25.0, 25.0), (75.0, 25.0), (100.0, 50.0),
+        ]
+        assert G.edges[0, 1]["polyline"] is True
+
+    def test_extracts_edge_styling(self):
+        G = read_gml(str(SAMPLE))
+        assert G.edges[0, 1]["colour"] == "#0000FF"
+        assert G.edges[0, 1]["stroke_width"] == 2.5
+        assert G.edges[0, 1]["label"] == "bend-edge"
+        assert G.edges[0, 1]["weight"] == 2.5
+
+    def test_does_not_set_path_attr(self):
+        """read_gml returns format-native shape (bends/polyline), not GEG path."""
+        G = read_gml(str(SAMPLE))
+        assert "path" not in G.edges[0, 1]
+        assert "position" not in G.nodes[0]
+
+
+# ---------- write_gml + read_gml round trip ----------
+
+class TestWriteGMLRoundTrip:
+    def test_round_trip_preserves_node_attrs(self, tmp_path):
+        G = read_gml(str(SAMPLE))
+        out = tmp_path / "rt.gml"
+        write_gml(G, str(out))
+        G2 = read_gml(str(out))
+        for n in G.nodes:
+            for key in ("x", "y", "width", "height", "colour", "shape", "label"):
+                assert G2.nodes[n].get(key) == G.nodes[n].get(key)
+
+    def test_round_trip_preserves_edge_attrs(self, tmp_path):
+        G = read_gml(str(SAMPLE))
+        out = tmp_path / "rt.gml"
+        write_gml(G, str(out))
+        G2 = read_gml(str(out))
+        for u, v in G.edges:
+            assert G2.edges[u, v].get("bends") == G.edges[u, v].get("bends")
+            assert G2.edges[u, v].get("polyline") == G.edges[u, v].get("polyline")
+            for key in ("colour", "stroke_width", "label", "weight"):
+                assert G2.edges[u, v].get(key) == G.edges[u, v].get(key)
+
+    def test_write_gml_honours_directed(self, tmp_path):
+        import networkx as nx
+        G = nx.DiGraph()
+        G.add_node(0, x=0, y=0)
+        G.add_node(1, x=1, y=0)
+        G.add_edge(0, 1)
+        out = tmp_path / "di.gml"
+        write_gml(G, str(out))
+        text = out.read_text()
+        assert "directed 1" in text

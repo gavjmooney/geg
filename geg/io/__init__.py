@@ -21,7 +21,7 @@ from .graphml import (
     convert_gml_to_graphml,
     convert_graphml_to_gml,
 )
-from .gml import gml_to_geg
+from .gml import read_gml, write_gml, gml_to_geg
 
 __all__ = [
     "read_geg",
@@ -33,5 +33,7 @@ __all__ = [
     "graphml_to_geg",
     "convert_gml_to_graphml",
     "convert_graphml_to_gml",
+    "read_gml",
+    "write_gml",
     "gml_to_geg",
 ]
