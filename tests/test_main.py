@@ -68,26 +68,40 @@ class TestLoadDrawing:
 
 
 class TestMetricTable:
-    def test_all_public_metrics_covered(self, m):
-        import geg
-        # Every public metric exported from geg.__init__ must appear in the
-        # main.py METRICS table; otherwise the batch CSV silently omits it.
-        metric_fns = {
-            "angular_resolution_min_angle", "angular_resolution_avg_angle",
-            "aspect_ratio", "crossing_angle", "edge_crossings",
-            "edge_length_deviation", "edge_orthogonality",
-            "gabriel_ratio_edges", "gabriel_ratio_nodes",
-            "kruskal_stress", "neighbourhood_preservation",
-            "node_edge_occlusion", "node_resolution", "node_uniformity",
+    def test_canonical_metrics_present(self, m):
+        """The canonical metric set — as curated for the batch CSV — must
+        cover every paper-§3.2 metric plus node_edge_occlusion. Gabriel Ratio
+        is intentionally excluded (non-canonical per paper §3.2), and only the
+        min-angle variant of Angular Resolution is included (the avg-angle
+        variant is a library extension).
+        """
+        expected = {
+            "angular_resolution",
+            "aspect_ratio",
+            "crossing_angle",
+            "edge_crossings",
+            "edge_length_deviation",
+            "edge_orthogonality",
+            "kruskal_stress",
+            "neighbourhood_preservation",
+            "node_edge_occlusion",
+            "node_resolution",
+            "node_uniformity",
         }
-        for name in metric_fns:
-            assert name in m.METRIC_NAMES, f"{name} missing from main.py METRICS"
+        assert set(m.METRIC_NAMES) == expected
+
+    def test_non_canonical_metrics_still_callable_from_library(self, m):
+        """Deselected metrics must still be reachable from `geg` directly —
+        only the batch / CLI surface is curated."""
+        import geg as geg_pkg
+        assert callable(geg_pkg.angular_resolution_avg_angle)
+        assert callable(geg_pkg.gabriel_ratio_edges)
+        assert callable(geg_pkg.gabriel_ratio_nodes)
 
     def test_compute_metrics_returns_all_keys(self, m):
         G = m.load_drawing(FIXTURES_DIR / "equilateral_triangle.geg")
         result = m.compute_metrics(G)
         assert set(result.keys()) == set(m.METRIC_NAMES)
-        # Every value should be finite for a reasonable drawing.
         for name, value in result.items():
             assert value == value, f"{name} is NaN on a clean fixture"
 

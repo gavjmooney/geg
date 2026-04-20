@@ -47,17 +47,24 @@ import geg
 
 SUPPORTED_INPUT_EXTENSIONS = {".geg", ".graphml", ".gml"}
 
-# (Name, callable) pairs in the order that CSV columns should appear.
+# The canonical metric set driving `compute_metrics`, `demo`, and the batch
+# CSV columns. Curation rules:
+#   - Angular Resolution uses the paper §3.2 eq. (1) min-angle variant.
+#     `angular_resolution_avg_angle` is a library extension (mean absolute
+#     deviation of angular gaps) and remains callable as
+#     `geg.angular_resolution_avg_angle` for users who want it.
+#   - Gabriel Ratio is excluded: paper §3.2 omits it ("not applicable for
+#     drawings with curves"). The two variants remain callable as
+#     `geg.gabriel_ratio_edges` / `geg.gabriel_ratio_nodes` for straight-line
+#     drawings.
+# Ordering is the CSV column order.
 METRICS: List[Tuple[str, Callable[[nx.Graph], float]]] = [
-    ("angular_resolution_min_angle", geg.angular_resolution_min_angle),
-    ("angular_resolution_avg_angle", geg.angular_resolution_avg_angle),
+    ("angular_resolution", geg.angular_resolution_min_angle),
     ("aspect_ratio", geg.aspect_ratio),
     ("crossing_angle", geg.crossing_angle),
     ("edge_crossings", geg.edge_crossings),
     ("edge_length_deviation", geg.edge_length_deviation),
     ("edge_orthogonality", geg.edge_orthogonality),
-    ("gabriel_ratio_edges", geg.gabriel_ratio_edges),
-    ("gabriel_ratio_nodes", geg.gabriel_ratio_nodes),
     ("kruskal_stress", geg.kruskal_stress),
     ("neighbourhood_preservation", geg.neighbourhood_preservation),
     ("node_edge_occlusion", geg.node_edge_occlusion),
