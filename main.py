@@ -159,7 +159,14 @@ def cmd_render(args: argparse.Namespace) -> None:
     G = load_drawing(Path(args.input))
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    geg.to_svg(G, str(out), grid=args.grid, scale=args.scale, margin=args.margin)
+    geg.to_svg(
+        G, str(out),
+        grid=args.grid,
+        width=args.width,
+        height=args.height,
+        margin=args.margin,
+        scale=args.scale,
+    )
     print(f"Wrote {out}")
 
 
@@ -259,10 +266,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_render.add_argument("--input", required=True)
     p_render.add_argument("--output", required=True)
     p_render.add_argument("--grid", action="store_true")
-    p_render.add_argument("--scale", type=float, default=50.0,
-                           help="Pixels per GEG unit (default 50).")
+    p_render.add_argument("--width", type=float, default=None,
+                           help="Target SVG width in pixels (default 800).")
+    p_render.add_argument("--height", type=float, default=None,
+                           help="Target SVG height in pixels (default: aspect-ratio).")
     p_render.add_argument("--margin", type=float, default=50.0,
                            help="Margin around the drawing, in pixels (default 50).")
+    p_render.add_argument("--scale", type=float, default=None,
+                           help="Pixels per GEG unit. Overrides auto-fit when set.")
     p_render.set_defaults(func=cmd_render)
 
     return p

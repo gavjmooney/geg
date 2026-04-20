@@ -203,25 +203,39 @@ def to_svg(
     G: nx.Graph,
     output_file: str,
     *,
+    width: Optional[float] = None,
+    height: Optional[float] = None,
     margin: float = 50.0,
-    scale: float = 50.0,
+    scale: Optional[float] = None,
     grid: bool = False,
     node_radius: float = 10.0,
     stroke_width: float = 2.0,
     grid_stroke: str = "#ddd",
     grid_stroke_width: float = 0.5,
 ) -> None:
-    """Render a drawing to SVG in pixel coordinates.
+    """Render a drawing to SVG at a sensible pixel size.
 
-    GEG coordinates are multiplied by `scale` (pixels per GEG unit) so that
-    unit-scale fixtures render at a readable size. `margin` is in pixels and
-    is applied around the (scaled) bounding box of the curve-promoted drawing.
+    Two sizing modes:
+
+    - **Auto-fit** (default, when `scale` is not given): the drawing is scaled
+      to fit a `width`-pixel-wide canvas (default 800), with `height` derived
+      from the curve-promoted bounding-box aspect ratio. If `height` is also
+      given, the drawing is aspect-preserved to fit both and centred inside
+      the canvas (letter-boxed if the aspect ratios differ).
+
+    - **Explicit scale** (when `scale` is given): `scale` is pixels per GEG
+      unit. Canvas dimensions default to `bbox * scale + 2 * margin` unless
+      `width` / `height` override them.
 
     Args:
         G: NetworkX graph with node 'x'/'y' and optional edge 'path' attrs.
         output_file: Output SVG filename.
-        margin: Padding around the bounding box, in pixels.
-        scale: Pixels per GEG unit.
+        width: Target canvas width in pixels. Default `None` → 800 in auto-fit
+            mode, or bbox × scale + 2 × margin in explicit-scale mode.
+        height: Target canvas height in pixels. Default `None` → derive from
+            aspect ratio.
+        margin: Padding around the drawing, in pixels.
+        scale: Pixels per GEG unit. Default `None` = auto-fit.
         grid: If True, draw a faint integer-GEG-coordinate grid behind the
             drawing. Intended for fixtures that need manual verification.
         node_radius: Default node radius, in pixels (overridden by per-node
@@ -231,17 +245,45 @@ def to_svg(
         grid_stroke_width: Stroke width for grid lines, in pixels.
     """
     min_x, min_y, max_x, max_y = get_bounding_box(G)
+    bbox_w = max_x - min_x
+    bbox_h = max_y - min_y
 
-    # Work in pixel coordinates: scale GEG coords, then add the pixel-margin
-    # around the scaled bbox.
-    sx_min = min_x * scale
-    sy_min = min_y * scale
-    sx_max = max_x * scale
-    sy_max = max_y * scale
-    vb_x = sx_min - margin
-    vb_y = sy_min - margin
-    vb_w = (sx_max - sx_min) + 2 * margin
-    vb_h = (sy_max - sy_min) + 2 * margin
+    if scale is None:
+        target_w = width if width is not None else 800.0
+        usable_w = max(1.0, target_w - 2 * margin)
+        if bbox_w > 0:
+            fit_scale = usable_w / bbox_w
+        else:
+            fit_scale = 1.0
+        if height is not None and bbox_h > 0:
+            usable_h = max(1.0, height - 2 * margin)
+            fit_scale = min(fit_scale, usable_h / bbox_h)
+        scale = fit_scale
+        canvas_w = target_w
+    else:
+        canvas_w = width if width is not None else bbox_w * scale + 2 * margin
+
+    scaled_bw = bbox_w * scale
+    scaled_bh = bbox_h * scale
+
+    if height is not None:
+        canvas_h = height
+    elif scaled_bh > 0:
+        canvas_h = scaled_bh + 2 * margin
+    else:
+        # Zero-height bbox (collinear nodes): fall back to a stripe-shaped
+        # canvas proportional to margin so the drawing isn't rendered on a
+        # hairline.
+        canvas_h = 2 * margin
+
+    # Centre the scaled drawing within the canvas (aspect-preserving).
+    pad_x = (canvas_w - scaled_bw) / 2
+    pad_y = (canvas_h - scaled_bh) / 2
+
+    vb_x = min_x * scale - pad_x
+    vb_y = min_y * scale - pad_y
+    vb_w = canvas_w
+    vb_h = canvas_h
 
     svg = Element(
         "svg",

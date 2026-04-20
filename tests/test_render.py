@@ -136,3 +136,70 @@ class TestCurvedEdges:
         vb = root.get("viewBox").split()
         _, _, _, h = (float(v) for v in vb)
         assert h >= 150.0
+
+
+class TestWidthHeightAutoFit:
+    def test_default_width_is_800(self, tmp_path):
+        G = _layout({"a": (0.0, 0.0), "b": (10.0, 0.0), "c": (5.0, 5.0)})
+        G.add_edges_from([("a", "b"), ("b", "c"), ("c", "a")])
+        out = tmp_path / "out.svg"
+        to_svg(G, str(out))
+        root = _parse_svg(out)
+        assert float(root.get("width")) == pytest.approx(800.0)
+
+    def test_height_auto_preserves_aspect_ratio(self, tmp_path):
+        """Square drawing → square canvas."""
+        G = _layout({"a": (0.0, 0.0), "b": (100.0, 0.0), "c": (0.0, 100.0), "d": (100.0, 100.0)})
+        out = tmp_path / "sq.svg"
+        to_svg(G, str(out), width=800, margin=0)
+        root = _parse_svg(out)
+        # bbox 100×100 into a 800-wide canvas (margin=0) → height also 800.
+        assert float(root.get("width")) == pytest.approx(800.0)
+        assert float(root.get("height")) == pytest.approx(800.0)
+
+    def test_wide_drawing_gets_short_canvas(self, tmp_path):
+        G = _layout({"a": (0.0, 0.0), "b": (100.0, 0.0), "c": (50.0, 10.0)})
+        G.add_edges_from([("a", "b"), ("b", "c")])
+        out = tmp_path / "wide.svg"
+        to_svg(G, str(out), width=1000, margin=0)
+        root = _parse_svg(out)
+        # bbox 100×10 (curves promoted so c's y=10 is the top), width 1000 →
+        # scale 10 px/unit → height 10 × 10 = 100.
+        assert float(root.get("height")) == pytest.approx(100.0)
+
+    def test_explicit_width_and_height_letterbox(self, tmp_path):
+        """When both given, drawing is aspect-preserved and centred."""
+        G = _layout({"a": (0.0, 0.0), "b": (100.0, 0.0), "c": (0.0, 100.0)})
+        G.add_edges_from([("a", "b"), ("a", "c")])
+        out = tmp_path / "letter.svg"
+        to_svg(G, str(out), width=800, height=400, margin=0)
+        root = _parse_svg(out)
+        assert float(root.get("width")) == pytest.approx(800.0)
+        assert float(root.get("height")) == pytest.approx(400.0)
+        # Height is the tighter constraint (100-unit bbox in 400 px vs. 800 px),
+        # so scale = 4, scaled bbox = 400×400, centred in 800×400 canvas.
+        vb = root.get("viewBox").split()
+        _, _, w, h = (float(v) for v in vb)
+        assert w == pytest.approx(800.0)
+        assert h == pytest.approx(400.0)
+
+    def test_explicit_scale_disables_auto_fit(self, tmp_path):
+        """Passing `scale` reverts to the old bbox×scale + margin sizing."""
+        G = _layout({"a": (0.0, 0.0), "b": (2.0, 0.0)})
+        G.add_edge("a", "b")
+        out = tmp_path / "fixed.svg"
+        to_svg(G, str(out), scale=50.0, margin=20.0)
+        root = _parse_svg(out)
+        # bbox 2×0 × scale 50 → 100×0 + margin 2*20 = 140 × 40.
+        assert float(root.get("width")) == pytest.approx(140.0)
+        assert float(root.get("height")) == pytest.approx(40.0)
+
+    def test_custom_width_scales_accordingly(self, tmp_path):
+        G = _layout({"a": (0.0, 0.0), "b": (10.0, 0.0), "c": (5.0, 10.0)})
+        G.add_edges_from([("a", "b"), ("b", "c")])
+        out = tmp_path / "narrow.svg"
+        to_svg(G, str(out), width=400, margin=0)
+        root = _parse_svg(out)
+        assert float(root.get("width")) == pytest.approx(400.0)
+        # 10-unit-wide bbox into 400 px (margin=0) → scale 40 → height 400.
+        assert float(root.get("height")) == pytest.approx(400.0)
