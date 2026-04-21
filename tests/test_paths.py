@@ -177,6 +177,19 @@ class TestFlattenPathAdaptive:
         # Short parabolic Q gets only a handful of samples at flatness 0.1.
         assert 5 <= len(poly) <= 30
 
+    def test_s_curve_not_mistaken_for_flat(self):
+        """Symmetric S-curves have their midpoint on the chord by symmetry,
+        so a midpoint-only flatness test terminates after one check and
+        misses the wild excursions at t=0.25 / t=0.75. The multi-probe
+        test (0.25, 0.5, 0.75) catches this."""
+        # Cubic S from (0, 0) to (100, 0): control points pull in opposite
+        # directions. By symmetry, the curve midpoint is (50, 0) — exactly
+        # on the chord — but t=0.25 and t=0.75 swing well off.
+        poly = P.flatten_path_adaptive(
+            "M0,0 C10,-60 90,60 100,0", flatness_tol=0.5,
+        )
+        assert len(poly) > 5  # must have subdivided at least twice
+
     def test_max_depth_caps_recursion(self):
         # flatness_tol close to zero forces maximum subdivision; max_depth=3
         # caps at 2^3 = 8 sub-segments per curve segment → at most 9 points

@@ -159,30 +159,49 @@ def _point_to_segment_distance(
     return abs(cross) / math.sqrt(seg_sq)
 
 
+_FLATNESS_PROBE_TS = (0.25, 0.5, 0.75)
+
+
 def _adaptive_flatten_segment(
     seg,
     flatness_tol: float,
     max_depth: int,
 ) -> List[Point]:
     """Recursively subdivide `seg` (a non-Line svgpathtools segment) using
-    midpoint-to-chord distance as the flatness proxy. Returns a list of
-    (x, y) points starting at `seg.point(0)` and ending at `seg.point(1)`.
+    max-point-to-chord distance at multiple interior sample points as the
+    flatness proxy. Returns a list of (x, y) points starting at
+    `seg.point(0)` and ending at `seg.point(1)`.
 
     The recursion sticks with the original `seg`'s parametrisation — each
     call works on a [t0, t1] sub-range of [0, 1] rather than cropped
     sub-segments. Avoids depending on segment-specific `.cropped()` support
     and keeps all sampled points on the true curve.
+
+    Why multiple probes: midpoint-only testing misses S-shaped curves whose
+    inflection point lies exactly at t=0.5 — the curve midpoint coincides
+    with the chord midpoint by symmetry, so the flatness test returns 0
+    and recursion terminates even though the curve swings wildly off the
+    chord at t=0.25 and t=0.75. Probing (0.25, 0.5, 0.75) catches this
+    case; the overhead is three extra point evaluations per recursion
+    level (cheap compared to svgpathtools' `seg.point` evaluation cost).
     """
     def recurse(t0: float, t1: float, depth: int) -> List[Point]:
         p0 = seg.point(t0)
         p1 = seg.point(t1)
-        tm = 0.5 * (t0 + t1)
-        pm = seg.point(tm)
-        d = _point_to_segment_distance(
-            pm.real, pm.imag, p0.real, p0.imag, p1.real, p1.imag,
-        )
-        if d <= flatness_tol or depth >= max_depth:
+        max_d = 0.0
+        for u in _FLATNESS_PROBE_TS:
+            t = t0 + u * (t1 - t0)
+            p = seg.point(t)
+            d = _point_to_segment_distance(
+                p.real, p.imag, p0.real, p0.imag, p1.real, p1.imag,
+            )
+            if d > max_d:
+                max_d = d
+                if max_d > flatness_tol:
+                    break  # already failed; no need to probe further
+        if max_d <= flatness_tol or depth >= max_depth:
             return [(p0.real, p0.imag), (p1.real, p1.imag)]
+        tm = 0.5 * (t0 + t1)
         left = recurse(t0, tm, depth + 1)
         right = recurse(tm, t1, depth + 1)
         # Dedup the shared midpoint — last of `left` equals first of `right`.

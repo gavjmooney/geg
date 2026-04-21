@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="300.0" viewBox="-200.0 -200.0 800.0 400.0">
+  <text x="-190.0" y="-180.0" font-family="monospace" font-size="17.89" fill="#999999">SAMPLED — flatness_fraction=0.005, 20 pts across 4 edges</text>
+  <path d="M0.000,0.000 L25.000,-22.500 L50.000,-30.000 L75.000,-22.500 L100.000,0.000" fill="none" stroke="#555555" stroke-width="3.840"/>
+  <path d="M100.000,0.000 L125.000,22.500 L150.000,30.000 L175.000,22.500 L200.000,0.000" fill="none" stroke="#555555" stroke-width="3.840"/>
+  <path d="M200.000,0.000 L225.000,-22.500 L250.000,-30.000 L275.000,-22.500 L300.000,0.000" fill="none" stroke="#555555" stroke-width="3.840"/>
+  <path d="M300.000,0.000 L325.000,22.500 L350.000,30.000 L375.000,22.500 L400.000,0.000" fill="none" stroke="#555555" stroke-width="3.840"/>
+  <circle cx="25.000" cy="-22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="50.000" cy="-30.000" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="75.000" cy="-22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="125.000" cy="22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="150.000" cy="30.000" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="175.000" cy="22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="225.000" cy="-22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="250.000" cy="-30.000" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="275.000" cy="-22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="325.000" cy="22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="350.000" cy="30.000" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="375.000" cy="22.500" r="3.360" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="100.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="200.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="300.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="400.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+</svg>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="390.0" viewBox="-200.0 -200.0 800.0 520.0">
+  <text x="-190.0" y="-180.0" font-family="monospace" font-size="19.08" fill="#999999">ORIGINAL</text>
+  <path d="M0,0 C80,0 120,0 200,0" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M0,0 C70,10 140,50 200,60" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M0,0 C60,40 120,100 200,120" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M0,120 C60,80 120,20 200,0" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M0,120 C70,90 140,70 200,60" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M0,120 C80,120 120,120 200,120" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M400,60 C400,250 0,250 0,120" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M200,0 C260,20 340,40 400,60" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M200,60 Q300,60 400,60" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <path d="M200,120 C260,100 340,80 400,60" fill="none" stroke="#1f77b4" stroke-width="3.840"/>
+  <circle cx="0.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="0.000" cy="120.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="200.000" cy="0.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="200.000" cy="60.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="200.000" cy="120.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+  <circle cx="400.000" cy="60.000" r="9.600" fill="#ffffff" stroke="#000000" stroke-width="2.400"/>
+</svg>
