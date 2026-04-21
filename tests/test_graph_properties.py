@@ -120,6 +120,83 @@ class TestStructural:
         assert gp.is_eulerian(nx.path_graph(3)) is False  # odd-degree endpoints
 
 
+class TestDegeneracy:
+    """Degeneracy = largest k such that a k-core (every node has deg ≥ k
+    within the core) exists. A tree has degeneracy 1 (leaves peel off one at
+    a time leaving deg-1 nodes); a cycle has degeneracy 2; Kn has n−1."""
+
+    def test_empty(self):
+        assert gp.degeneracy(nx.Graph()) == 0
+
+    def test_single_node(self):
+        G = nx.Graph()
+        G.add_node(0)
+        assert gp.degeneracy(G) == 0
+
+    def test_tree_is_one(self):
+        # Path is a tree; every subgraph still has a leaf of degree 1.
+        assert gp.degeneracy(nx.path_graph(5)) == 1
+        assert gp.degeneracy(nx.star_graph(6)) == 1
+
+    def test_cycle_is_two(self):
+        # Cycle is 2-regular, so the whole graph is its own 2-core.
+        assert gp.degeneracy(nx.cycle_graph(6)) == 2
+
+    def test_complete_graph_is_n_minus_one(self):
+        # Kn: every node has degree n-1, and every subgraph of Kn is complete.
+        assert gp.degeneracy(nx.complete_graph(5)) == 4
+
+    def test_self_loops_stripped(self):
+        # Self-loops would make core_number raise; we strip them, so a path
+        # with a self-loop still has degeneracy 1 (the path part).
+        G = nx.Graph()
+        G.add_edges_from([(0, 1), (1, 2), (2, 0)])  # triangle → 2-core
+        G.add_edge(0, 0)
+        assert gp.degeneracy(G) == 2
+
+    def test_directed_reduced_to_undirected(self):
+        # DiGraph on a 3-cycle → undirected triangle → 2-core.
+        G = nx.DiGraph()
+        G.add_edges_from([(0, 1), (1, 2), (2, 0)])
+        assert gp.degeneracy(G) == 2
+
+
+class TestBiconnectedComponents:
+    """Biconnected components are maximal 2-node-connected subgraphs; bridges
+    count as their own 2-node components. Isolated nodes don't contribute."""
+
+    def test_single_edge_is_one_component(self):
+        G = nx.Graph()
+        G.add_edge(0, 1)
+        assert gp.n_biconnected_components(G) == 1
+
+    def test_path_each_edge_is_a_bridge(self):
+        # P4 has 3 edges, all bridges → 3 biconnected components.
+        assert gp.n_biconnected_components(nx.path_graph(4)) == 3
+
+    def test_cycle_is_one_component(self):
+        # A cycle is already 2-connected, so it's a single bicomp.
+        assert gp.n_biconnected_components(nx.cycle_graph(5)) == 1
+
+    def test_bowtie_two_triangles_sharing_vertex(self):
+        # Two triangles glued at one node — the shared node is an
+        # articulation point, so the graph splits into 2 bicomps.
+        G = nx.Graph()
+        G.add_edges_from([(0, 1), (1, 2), (2, 0), (2, 3), (3, 4), (4, 2)])
+        assert gp.n_biconnected_components(G) == 2
+
+    def test_disconnected_components_count_separately(self):
+        # Two disjoint cycles → 2 bicomps total.
+        G = nx.disjoint_union(nx.cycle_graph(3), nx.cycle_graph(4))
+        assert gp.n_biconnected_components(G) == 2
+
+    def test_isolated_nodes_ignored(self):
+        # Isolated nodes are not in any biconnected component.
+        G = nx.cycle_graph(3)
+        G.add_nodes_from([10, 11])
+        assert gp.n_biconnected_components(G) == 1
+
+
 # ---------- distances (per-component weighted sum) ----------
 
 class TestDistances:

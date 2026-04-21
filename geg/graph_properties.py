@@ -189,6 +189,35 @@ def is_eulerian(G: nx.Graph) -> bool:
         return False
 
 
+def degeneracy(G: nx.Graph) -> int:
+    """k-core degeneracy: largest k for which a non-empty k-core exists.
+
+    Equivalently, max over all nodes of the core number. Directed graphs
+    are treated as undirected and multigraphs reduced to simple; self-loops
+    are stripped because `nx.core_number` rejects them. Empty graphs and
+    edge-less graphs return 0.
+    """
+    UG = _simple_undirected(G)
+    if nx.number_of_selfloops(UG):
+        UG = UG.copy()
+        UG.remove_edges_from(nx.selfloop_edges(UG))
+    if UG.number_of_nodes() == 0:
+        return 0
+    core = nx.core_number(UG)
+    return max(core.values()) if core else 0
+
+
+def n_biconnected_components(G: nx.Graph) -> int:
+    """Number of biconnected components in the undirected simple view.
+
+    A biconnected component is a maximal subgraph with no articulation
+    point; bridges count as their own 2-node components. Isolated nodes
+    and self-loops are ignored by `nx.biconnected_components`.
+    """
+    UG = _simple_undirected(G)
+    return sum(1 for _ in nx.biconnected_components(UG))
+
+
 # ---------- distances (per-component aggregation) ----------
 
 def compute_apsp(G: nx.Graph, weight: Optional[str] = None) -> Apsp:
@@ -341,6 +370,7 @@ PROPERTY_NAMES: List[str] = [
     # structural
     "is_tree", "is_forest", "is_bipartite", "is_planar",
     "is_dag", "is_regular", "is_eulerian",
+    "degeneracy", "n_biconnected_components",
     # distances
     "diameter", "radius", "avg_shortest_path_length",
     # clustering
