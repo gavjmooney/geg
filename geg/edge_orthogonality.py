@@ -71,9 +71,9 @@ def _edge_deviation(poly) -> float:
 
 def edge_orthogonality(
     G: nx.Graph,
-    samples_per_curve: int = 100,
+    samples_per_curve: Optional[int] = None,
     *,
-    flatness_fraction: Optional[float] = None,
+    flatness_fraction: float = 0.005,
 ) -> float:
     """Edge orthogonality metric in [0, 1], per paper §3.2 eq. (5)-(6).
 
@@ -85,22 +85,22 @@ def edge_orthogonality(
 
     Edgeless graphs return 1.0 (vacuously orthogonal).
 
-    Flattening mode:
-      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
-        curve segment gets `samples_per_curve` samples (paper §3.2
-        prescribed, default 100).
-      - `flatness_fraction` set: adaptive curvature-aware mode — segments
-        are recursively split until the midpoint-to-chord distance drops
-        below `flatness_fraction × node_bbox_diagonal`. `samples_per_curve`
-        is ignored. Typical value 0.005 (0.5% deviation).
+    Flattening mode (v0.3.0 onwards defaults to adaptive):
+      - **Default (adaptive):** segments are recursively split until the
+        midpoint-to-chord distance drops below `flatness_fraction *
+        node_bbox_diagonal`. Sample density responds to local curvature
+        rather than being fixed per segment.
+      - **Fixed-N (opt-in):** pass `samples_per_curve=N` to force uniform
+        sampling at N points per non-Line segment. Use this for TVCG /
+        paper §3.2 reproduction (prescribed N = 100).
 
     Args:
         G: NetworkX graph with node 'x', 'y' and optional edge 'path' attrs.
-        samples_per_curve: Fixed-N sample density (ignored when
-            flatness_fraction is set).
+        samples_per_curve: If set, forces fixed-N mode at this density.
+            When `None` (default) the metric uses adaptive flattening.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the
-            node-position bbox diagonal. When set, switches to curvature-
-            aware sampling.
+            node-position bbox diagonal. Ignored when `samples_per_curve`
+            is set. Default 0.005 (0.5% deviation).
 
     Returns:
         Float in [0, 1], 1 = all edges axis-aligned.
@@ -108,10 +108,12 @@ def edge_orthogonality(
     if G.number_of_edges() == 0:
         return 1.0
 
-    flatness_tol = (
-        _flatness_tol_from_fraction(G, flatness_fraction)
-        if flatness_fraction is not None else None
-    )
+    if samples_per_curve is None:
+        flatness_tol = _flatness_tol_from_fraction(G, flatness_fraction)
+        fixed_N = 100  # ignored by edge_polyline when flatness_tol set
+    else:
+        flatness_tol = None
+        fixed_N = samples_per_curve
 
     deviations = []
     for u, v, attrs in G.edges(data=True):
@@ -119,7 +121,7 @@ def edge_orthogonality(
         target = (G.nodes[v]["x"], G.nodes[v]["y"])
         poly = edge_polyline(
             source, target, attrs.get("path"),
-            samples_per_curve=samples_per_curve,
+            samples_per_curve=fixed_N,
             flatness_tol=flatness_tol,
         )
         deviations.append(_edge_deviation(poly))

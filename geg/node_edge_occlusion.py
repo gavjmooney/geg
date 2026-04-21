@@ -88,12 +88,18 @@ def _segment_point_distance(
 def node_edge_occlusion(
     G: nx.Graph,
     epsilon_fraction: float = 0.02,
-    samples_per_curve: int = 100,
+    samples_per_curve: Optional[int] = None,
     *,
     bbox: Optional[Tuple[float, float, float, float]] = None,
-    flatness_fraction: Optional[float] = None,
+    flatness_fraction: float = 0.005,
 ) -> float:
     """Node-Edge Occlusion score in [0, 1] (1 = no occlusion).
+
+    Flattening mode (v0.3.0 onwards defaults to adaptive):
+      - **Default (adaptive):** segments are recursively split until
+        midpoint-to-chord deviation < `flatness_fraction * diag`.
+      - **Fixed-N (opt-in):** pass `samples_per_curve=N` for uniform
+        sampling; use for TVCG reproduction (N = 100).
 
     Args:
         G: NetworkX graph with node `x` and `y` attributes. Optional per-node
@@ -103,13 +109,11 @@ def node_edge_occlusion(
             diagonal. Default 0.02 (nodes with radii typically render ~5-15%
             of the diagonal, so a 2% buffer around the disk captures visible
             overlap).
-        samples_per_curve: Fixed-N curve-sampling density used to flatten
-            Bezier segments into straight pieces. Ignored when
-            `flatness_fraction` is set.
-        flatness_fraction: Adaptive curvature-aware flattening tolerance as
-            a fraction of the node-bbox diagonal. When set, segments are
-            recursively split until the midpoint-to-chord distance drops
-            below `flatness_fraction · diag` instead of using a fixed N.
+        samples_per_curve: If set, forces fixed-N mode at this density.
+            When `None` (default) the metric uses adaptive flattening.
+        flatness_fraction: Adaptive-mode tolerance as a fraction of the
+            node-bbox diagonal. Ignored when `samples_per_curve` is set.
+            Default 0.005.
         bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
             positions. If None, computed via
             `get_bounding_box(G, promote=False)`. NEO uses the node-only
@@ -143,7 +147,12 @@ def node_edge_occlusion(
         return 1.0
 
     epsilon = epsilon_fraction * diag
-    flatness_tol = flatness_fraction * diag if flatness_fraction is not None else None
+    if samples_per_curve is None:
+        flatness_tol = flatness_fraction * diag
+        fixed_N = 100  # ignored by edge_polyline when flatness_tol set
+    else:
+        flatness_tol = None
+        fixed_N = samples_per_curve
     pos = {n: (x, y) for n, x, y, _ in nodes}
 
     edges = [
@@ -160,7 +169,7 @@ def node_edge_occlusion(
         target = pos[v]
         poly = edge_polyline(
             source, target, data.get("path"),
-            samples_per_curve=samples_per_curve,
+            samples_per_curve=fixed_N,
             flatness_tol=flatness_tol,
         )
         segments = list(zip(poly, poly[1:]))

@@ -2,46 +2,83 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — `dev/adaptive-curvature-sampling`
+## [Unreleased] — `dev/metrics-refactor-tdd`
 
-Opt-in curvature-aware path flattening. Fixed-N sampling (the 0.2.0
-default) is unchanged; the new mode is activated per-call via a
-`flatness_fraction` kwarg on the metrics. Paper §3.2 conformance is
-preserved in the default path. Motivation: tight curves under-sample
-at fixed N=100 per segment while nearly-straight curves over-sample;
+Curvature-aware adaptive path flattening becomes the default. Replaces
+the Phase-2 / 0.2.0 default of `samples_per_curve = 100` per non-Line
+segment (paper §3.2 prescribed) with a scale-aware `flatness_fraction
+= 0.005` tolerance that sample density responds to local curvature
+rather than being fixed per segment. Motivation: tight curves
+under-sample at fixed N=100 while nearly-straight curves over-sample;
 adaptive flattening pushes samples where they're needed and skips
-regions that are already flat within tolerance. This branch deviates
-from the paper — the library's purpose on this track is an updated
-metric set, not strict reproduction.
+regions already flat within tolerance. Deviates from paper §3.2's
+fixed-100 prescription by design — this track is the updated metric
+set, not strict TVCG reproduction.
+
+### Changed (breaking, API-compatible)
+
+- **Default flattening mode flipped to adaptive** on `edge_crossings`,
+  `edge_orthogonality`, `node_edge_occlusion`, and `curves_promotion`.
+  `samples_per_curve` default changes from `100` to `None`;
+  `flatness_fraction` default changes from `None` to `0.005`.
+  Dispatch: if `samples_per_curve` is explicitly set (not `None`),
+  the metric forces fixed-N mode; otherwise it uses adaptive. API
+  callers who passed `samples_per_curve=100` explicitly continue to
+  get fixed-N; callers who relied on the default now get adaptive.
+  For TVCG / paper §3.2 reproduction, pass `samples_per_curve=100`.
+
+  **TVCG-impact on existing corpus:** none. The TVCG layouts are
+  straight-line; no curved segments means adaptive and fixed-N
+  produce byte-identical polylines. Every existing metric column on
+  the TVCG dataset stays bit-identical.
+
+  **Drift on curved drawings:** small. On the library's own curved
+  fixtures (`bezier_curve`, `cubic_bezier`), EO drifts by ≤ 0.002 in
+  absolute value; EC / NEO don't drift because no crossings /
+  occlusions occur on single-edge fixtures. Callers with curved
+  corpora should re-run and diff. None of the fixture tests' pinned
+  metric values break — all pins are on sampling-density-invariant
+  scores (ELD=1, EC=1, CA=1, AR vacuous on degree-1 nodes).
 
 ### Added
 
 - **`_paths.flatten_path_adaptive(path, flatness_tol, max_depth=16)`** —
   curvature-aware flattener using midpoint-to-chord subdivision. Each
-  non-Line segment is recursively split at `t=0.5` until the midpoint
-  of the curve lies within `flatness_tol` of the chord connecting the
-  current endpoints; highly curved regions recurse deeper, nearly-
-  straight regions terminate after one check. Line segments are kept
-  as their two endpoints (same invariant as `flatten_path_to_polyline`).
+  non-Line segment is recursively split at `t=0.5` until the curve's
+  max deviation (probed at t = 0.25, 0.5, 0.75) from the chord falls
+  below `flatness_tol`. Multi-probe catches symmetric S-curves whose
+  midpoint lies on the chord by symmetry. Line segments are kept as
+  their two endpoints (same invariant as `flatten_path_to_polyline`).
   `max_depth` caps recursion at `2^max_depth` sub-segments per curve
-  segment (default 16 — generous for well-behaved curves, guards
-  against pathological zero-area loops).
+  segment (default 16; generous, guards against pathological loops).
 - **`_paths._point_to_segment_distance(px, py, ax, ay, bx, by)`** —
-  internal geometric primitive used by the flatness test (perpendicular
+  internal geometric primitive for the flatness test (perpendicular
   distance from a point to the infinite line through two other points;
   degenerate zero-length "segment" collapses to point-to-point).
 - **`edge_polyline(..., flatness_tol=None, max_depth=16)`** — the
-  convenience wrapper now dispatches on `flatness_tol`: when set,
-  adaptive mode; when `None`, the existing fixed-N behaviour is kept
-  byte-identical.
-- **Metric kwargs:** `edge_crossings(..., flatness_fraction=None)`,
-  `edge_orthogonality(..., flatness_fraction=None)`,
-  `node_edge_occlusion(..., flatness_fraction=None)`, and
-  `curves_promotion(G, ..., flatness_fraction=None)`. When set, the
-  metric converts to an absolute tolerance `flatness_fraction ·
-  node_bbox_diagonal` and switches to adaptive mode. `samples_per_curve`
-  is ignored in that branch. Typical values: `0.001`–`0.005` (0.1–0.5%
-  of the drawing's diagonal).
+  convenience wrapper now dispatches on `flatness_tol`. Also:
+  orientation-aware endpoint snapping — if the path was authored in
+  `target → source` direction (e.g. NetworkX returned (u, v) opposite
+  to how the edge was added), the polyline is reversed before
+  snapping so `poly[0]` always matches `source`.
+- **Metric kwargs:** `flatness_fraction=0.005` on `edge_crossings`,
+  `edge_orthogonality`, `node_edge_occlusion`, and `curves_promotion`.
+  Tolerance converts to `flatness_fraction · node_bbox_diagonal`.
+  Typical values: `0.001`–`0.005` (0.1–0.5% of the drawing's diagonal).
+- **`examples/adaptive_sampling/`** — visual showcase of adaptive
+  flattening on six curved drawings (sine_wave, flower, pinwheel,
+  tangled_s, flow_network, signature). Each has a paired
+  `_original.svg` / `_sampled.svg` so the density distribution of
+  samples is directly visible.
+- **`examples/adaptive_sampling/scale_sweep/`** — signature rendered
+  at four underlying coordinate scales spanning 9 orders of magnitude
+  (1e-3 to 1e6). SVG output is byte-identical (via display transform
+  to pixel coords) — proves scale invariance of the flattener.
+- **`examples/adaptive_sampling/canvas_sweep/`** — signature rendered
+  at five pixel canvas widths (300, 600, 1200, 2400, 3000 px). Manual
+  inspection test: adaptive polyline should stay smooth at higher
+  magnifications because `flatness_fraction` is relative to graph
+  coords, not pixels.
 
 ### Trade-offs
 
@@ -54,16 +91,8 @@ metric set, not strict reproduction.
   EC's O(edges²) segment-pair comparison. For drawings with tight
   curves (high curvature per unit length), adaptive can produce
   **more** samples than fixed — it's paying the curvature its due.
-- Deviates from paper §3.2's 100-samples prescription. Fine on this
-  branch; not acceptable for TVCG-reproduction work (stay on 0.2.0
-  default for that).
-
-### Still to decide
-
-- Whether to flip the default from fixed-N to adaptive in a future
-  release. Requires an empirical re-run on a curved-drawing corpus to
-  quantify the metric-value drift. TVCG corpus is straight-line so
-  this isn't gated on that dataset.
+- Paper-conformance regressions require a single extra kwarg
+  (`samples_per_curve=100`). TVCG dataset is unaffected (straight-line).
 
 ---
 

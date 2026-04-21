@@ -381,9 +381,9 @@ def to_svg(
 
 def curves_promotion(
     G: nx.Graph,
-    samples_per_curve: int = 100,
+    samples_per_curve: Optional[int] = None,
     *,
-    flatness_fraction: Optional[float] = None,
+    flatness_fraction: float = 0.005,
 ) -> nx.Graph:
     """
     Promote curved/polyline edges by splitting them into straight segments.
@@ -392,33 +392,33 @@ def curves_promotion(
     copied with is_segment=False. Each curve is approximated with intermediate
     nodes (is_segment=True) connected by straight segments encoded as M/L paths.
 
-    Sampling is delegated to `_paths.edge_polyline` at the package-wide
-    default density (100 samples per curved segment) so that the node set
-    of `H` matches the polyline that EO / EC / NEO sample against. Straight
-    `Line` segments are kept as their exact two endpoints.
+    Sampling is delegated to `_paths.edge_polyline`. Straight `Line`
+    segments are kept as their exact two endpoints.
 
-    Flattening mode:
-      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
-        segment gets `samples_per_curve` samples.
-      - `flatness_fraction` set: adaptive curvature-aware mode — tolerance
-        is `flatness_fraction · node_bbox_diagonal`. Highly curved segments
-        get more intermediate nodes; nearly-straight segments get fewer.
+    Flattening mode (v0.3.0 onwards defaults to adaptive):
+      - **Default (adaptive):** tolerance is `flatness_fraction *
+        node_bbox_diagonal`. Highly curved segments get more intermediate
+        nodes; nearly-straight segments get fewer.
+      - **Fixed-N (opt-in):** pass `samples_per_curve=N` to force uniform
+        sampling at N samples per non-Line segment.
 
     Args:
         G: Input graph with edge 'path' attributes.
-        samples_per_curve: Fixed-N samples per non-Line segment (default 100,
-            ignored when flatness_fraction is set).
+        samples_per_curve: If set, forces fixed-N mode at this density.
+            When `None` (default) uses adaptive flattening.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the node
-            bbox diagonal.
+            bbox diagonal. Ignored when `samples_per_curve` is set.
+            Default 0.005.
 
     Returns:
         A new graph H with promoted segments.
     """
     flatness_tol: Optional[float] = None
-    if flatness_fraction is not None:
-        # Node-bbox diagonal — we're choosing sampling density for curves,
-        # which depends on the drawing's scale. Using the curve-promoted bbox
-        # here would be circular (we're about to promote).
+    fixed_N = 100  # forwarded only when samples_per_curve is None but unused
+    if samples_per_curve is None:
+        # Adaptive (default). Compute tolerance relative to node-bbox
+        # diagonal — using the curve-promoted bbox here would be circular
+        # (we're about to promote).
         xs = [data['x'] for _, data in G.nodes(data=True)]
         ys = [data['y'] for _, data in G.nodes(data=True)]
         if xs and ys:
@@ -462,7 +462,7 @@ def curves_promotion(
         target = (G.nodes[v]['x'], G.nodes[v]['y'])
         pts = edge_polyline(
             source, target, attrs.get('path'),
-            samples_per_curve=samples_per_curve,
+            samples_per_curve=samples_per_curve if samples_per_curve is not None else fixed_N,
             flatness_tol=flatness_tol,
         )
 

@@ -77,10 +77,10 @@ def _polyline_to_segments(poly):
 def edge_crossings(
     G: nx.Graph,
     return_crossings: bool = False,
-    samples_per_curve: int = 100,
+    samples_per_curve: Optional[int] = None,
     min_angle_tol: float = 2.5,
     *,
-    flatness_fraction: Optional[float] = None,
+    flatness_fraction: float = 0.005,
 ) -> Union[float, Tuple[float, List[CrossingHit]]]:
     """Count edge crossings and compute the EC metric (paper §3.2 eq. (3)).
 
@@ -89,22 +89,22 @@ def edge_crossings(
     segment intersection). Near-parallel crossings (angle < `min_angle_tol`)
     are discarded.
 
-    Flattening mode:
-      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
-        segment gets `samples_per_curve` samples (paper §3.2 prescribed).
-      - `flatness_fraction` set: adaptive curvature-aware mode — segments
-        are recursively split until midpoint-to-chord deviation drops below
-        `flatness_fraction · node_bbox_diagonal`. Typical value 0.005.
+    Flattening mode (v0.3.0 onwards defaults to adaptive):
+      - **Default (adaptive):** segments are recursively split until the
+        midpoint-to-chord deviation drops below `flatness_fraction *
+        node_bbox_diagonal`. Sample density responds to local curvature.
+      - **Fixed-N (opt-in):** pass `samples_per_curve=N` to force uniform
+        sampling. Use this for TVCG / paper §3.2 reproduction (N = 100).
 
     Args:
         G: NetworkX graph with edge 'path' attributes.
         return_crossings: If True, also return the list of crossings.
-        samples_per_curve: Fixed-N sample density (ignored when
-            flatness_fraction is set).
+        samples_per_curve: If set, forces fixed-N mode at this density.
+            When `None` (default) the metric uses adaptive flattening.
         min_angle_tol: Minimum crossing angle (degrees) to keep a crossing.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the
-            node bbox diagonal. When set, switches to curvature-aware
-            sampling.
+            node bbox diagonal. Ignored when `samples_per_curve` is set.
+            Default 0.005.
 
     Returns:
         Either the EC score in [0, 1], or (score, crossings) where each
@@ -112,7 +112,8 @@ def edge_crossings(
     """
     edges = list(G.edges(data=True))
 
-    if flatness_fraction is not None:
+    if samples_per_curve is None:
+        # Adaptive (default).
         from .geg_parser import get_bounding_box
         bbox = get_bounding_box(G, promote=False)
         diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
