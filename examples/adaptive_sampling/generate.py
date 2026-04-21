@@ -366,24 +366,67 @@ def _scale_signature(k: float) -> nx.Graph:
     return G
 
 
+_RENDER_CANVAS = 600.0  # pixel width the sampled SVGs always render at
+
+
+def _display_transform(G: nx.Graph):
+    """Return (scale, offset_x, offset_y) mapping graph coords to a
+    fixed pixel range `[0, _RENDER_CANVAS]` × `[0, h]`.
+
+    Purpose: decouple the SVG output's coordinate range from the graph's
+    native scale. The adaptive flattener still runs on native-scale
+    coordinates (that's the point of the sweep — proving computational
+    scale invariance), but every emitted SVG uses pixel coords in the
+    hundreds-range regardless. Browsers' single-precision internal
+    transforms only stay numerically clean up to ~1.7e7; at the native
+    1e6 scale, a viewBox spanning 6e8 pushes past that threshold and
+    browser rendering visibly degrades. A display-only rescale keeps
+    things robust without affecting the computation we're verifying.
+    """
+    box = _layout(G)
+    extent = max(box["width"], box["height"])
+    if extent <= 0:
+        return 1.0, 0.0, 0.0
+    scale = _RENDER_CANVAS / extent
+    # Translate so that the viewBox starts at (0, 0).
+    return scale, -box["min_x"] * scale, -box["min_y"] * scale
+
+
 def _render_sampled_with_metrics(
     G: nx.Graph, path: Path, flatness_tol: float, scale_label: str,
 ) -> None:
-    """Variant of render_sampled that overlays sample count + metric
-    values + the scale label in the header text, for side-by-side
-    scale-sweep comparison."""
+    """Variant of render_sampled that (a) overlays the scale label +
+    metric readout in the header, and (b) emits every SVG at a fixed
+    pixel canvas so the output is robust to browser float-precision
+    issues at extreme underlying coordinate scales."""
     from geg import edge_crossings, edge_orthogonality, node_edge_occlusion
 
     box = _layout(G)
-    r = _node_radius(box)
+    s, ox, oy = _display_transform(G)
+
+    def tx(x, y):
+        return x * s + ox, y * s + oy
+
+    # Use a fixed display canvas; compute render-space node size from
+    # the canvas, not the graph coords.
+    disp_w = box["width"] * s
+    disp_h = box["height"] * s
+    r = 0.012 * max(disp_w, disp_h)
     stroke_w = r * 0.4
     dot_r = r * 0.35
-    lines = [_svg_open(box)]
-    diag = math.hypot(box["width"], box["height"])
+
+    svg_open = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        f'width="{disp_w:.3f}" height="{disp_h:.3f}" '
+        f'viewBox="0 0 {disp_w:.3f} {disp_h:.3f}">\n'
+    )
+    lines = [svg_open]
 
     total_samples = 0
     rendered_edges = []
     for u, v, attrs in G.edges(data=True):
+        # Polyline is computed at native graph scale (proves invariance).
         poly = edge_polyline(
             source=(G.nodes[u]["x"], G.nodes[u]["y"]),
             target=(G.nodes[v]["x"], G.nodes[v]["y"]),
@@ -391,41 +434,106 @@ def _render_sampled_with_metrics(
             flatness_tol=flatness_tol,
         )
         total_samples += len(poly)
-        rendered_edges.append((u, v, poly))
+        # Transform to pixel space for emission only.
+        rendered_edges.append((u, v, [tx(x, y) for x, y in poly]))
 
     eo = edge_orthogonality(G, flatness_fraction=FLATNESS_FRACTION)
     ec = edge_crossings(G, flatness_fraction=FLATNESS_FRACTION)
     neo = node_edge_occlusion(G, flatness_fraction=FLATNESS_FRACTION)
 
-    fs = diag * 0.018
-    # Multiple header lines so the readout stays legible.
+    fs = disp_h * 0.045
     lines.append(
-        f'  <text x="{box["min_x"] + 10}" y="{box["min_y"] + fs * 1.3}" '
-        f'font-family="monospace" font-size="{fs:.2f}" fill="#555555">'
+        f'  <text x="10" y="{fs * 1.3:.2f}" font-family="monospace" '
+        f'font-size="{fs:.2f}" fill="#555555">'
         f'scale={scale_label}  {total_samples} pts</text>\n'
     )
     lines.append(
-        f'  <text x="{box["min_x"] + 10}" y="{box["min_y"] + fs * 2.7}" '
-        f'font-family="monospace" font-size="{fs * 0.75:.2f}" fill="#999999">'
+        f'  <text x="10" y="{fs * 2.5:.2f}" font-family="monospace" '
+        f'font-size="{fs * 0.65:.2f}" fill="#999999">'
         f'EO={eo:.6f}  EC={ec:.6f}  NEO={neo:.6f}</text>\n'
     )
 
-    for u, v, poly in rendered_edges:
-        # `%g` preserves full float precision without scale-dependent
-        # decimal truncation (a %.3f would round 0.0375 to 0.038 at
-        # scale 1e-3 while printing 37.5 exactly at scale 1).
-        d = "M" + " L".join(f"{x:.10g},{y:.10g}" for x, y in poly)
+    for _, _, poly in rendered_edges:
+        d = "M" + " L".join(f"{x:.3f},{y:.3f}" for x, y in poly)
         lines.append(
             f'  <path d="{d}" fill="none" stroke="#555555" '
-            f'stroke-width="{stroke_w:g}"/>\n'
+            f'stroke-width="{stroke_w:.3f}"/>\n'
         )
     for _, _, poly in rendered_edges:
         for x, y in poly[1:-1]:
             lines.append(
-                f'  <circle cx="{x:.10g}" cy="{y:.10g}" r="{dot_r:.10g}" '
+                f'  <circle cx="{x:.3f}" cy="{y:.3f}" r="{dot_r:.3f}" '
                 f'fill="#e74c3c" stroke="none"/>\n'
             )
-    lines.append(_render_nodes(G, r))
+    # Node circles in pixel space too.
+    for n, attrs in G.nodes(data=True):
+        nx_, ny_ = tx(attrs["x"], attrs["y"])
+        lines.append(
+            f'  <circle cx="{nx_:.3f}" cy="{ny_:.3f}" r="{r:.3f}" '
+            f'fill="#ffffff" stroke="#000000" '
+            f'stroke-width="{r * 0.25:.3f}"/>\n'
+        )
+    lines.append("</svg>\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def _render_original_with_display_transform(
+    G: nx.Graph, path: Path, scale_label: str,
+) -> None:
+    """Render the original (curve) path at the native graph scale, but with
+    pixel-range coordinates in the SVG so browser precision stays clean.
+    Rewrites the `d` attribute by pulling each numeric literal through the
+    display transform.
+    """
+    import re
+    box = _layout(G)
+    s, ox, oy = _display_transform(G)
+    disp_w = box["width"] * s
+    disp_h = box["height"] * s
+    r = 0.012 * max(disp_w, disp_h)
+    stroke_w = r * 0.4
+
+    import svgpathtools
+
+    def rewrite_path(d_str: str) -> str:
+        """Parse the SVG path, apply (scale, translate) to every control
+        point and endpoint, re-emit. Avoids the string-level pitfalls of
+        mixed scientific-notation coords."""
+        p = svgpathtools.parse_path(d_str)
+        xform = complex(ox, oy)
+        for seg in p:
+            for attr in ("start", "control", "control1", "control2", "end"):
+                if hasattr(seg, attr):
+                    v = getattr(seg, attr)
+                    setattr(seg, attr, complex(v.real * s + ox, v.imag * s + oy))
+        return p.d()
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>\n',
+        f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        f'width="{disp_w:.3f}" height="{disp_h:.3f}" '
+        f'viewBox="0 0 {disp_w:.3f} {disp_h:.3f}">\n',
+    ]
+    fs = disp_h * 0.045
+    lines.append(
+        f'  <text x="10" y="{fs * 1.3:.2f}" font-family="monospace" '
+        f'font-size="{fs:.2f}" fill="#999999">'
+        f'ORIGINAL — scale={scale_label}</text>\n'
+    )
+    for _, _, attrs in G.edges(data=True):
+        d = rewrite_path(attrs["path"])
+        lines.append(
+            f'  <path d="{d}" fill="none" stroke="#1f77b4" '
+            f'stroke-width="{stroke_w:.3f}"/>\n'
+        )
+    for n, attrs in G.nodes(data=True):
+        nx_ = attrs["x"] * s + ox
+        ny_ = attrs["y"] * s + oy
+        lines.append(
+            f'  <circle cx="{nx_:.3f}" cy="{ny_:.3f}" r="{r:.3f}" '
+            f'fill="#ffffff" stroke="#000000" '
+            f'stroke-width="{r * 0.25:.3f}"/>\n'
+        )
     lines.append("</svg>\n")
     path.write_text("".join(lines), encoding="utf-8")
 
@@ -450,7 +558,9 @@ def generate_scale_sweep() -> None:
     for label, k in scales:
         G = _scale_signature(k)
         tol = _flatness_tol(G)
-        render_original(G, sweep_dir / f"signature_scale_{label}_original.svg")
+        _render_original_with_display_transform(
+            G, sweep_dir / f"signature_scale_{label}_original.svg", label,
+        )
         _render_sampled_with_metrics(
             G, sweep_dir / f"signature_scale_{label}_sampled.svg",
             tol, label,

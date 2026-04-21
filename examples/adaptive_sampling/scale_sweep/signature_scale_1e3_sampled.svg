@@ -1,32 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="300.0" viewBox="-150000.0 -150000.0 600000.0 300000.0">
-  <text x="-149990.0" y="-134302.80279795147" font-family="monospace" font-size="12074.77" fill="#555555">scale=1e3  26 pts</text>
-  <text x="-149990.0" y="-117398.12888805306" font-family="monospace" font-size="9056.08" fill="#999999">EO=0.606268  EC=1.000000  NEO=1.000000</text>
-  <path d="M0,0 L30000,0 L37500,-16875 L45000,-22500 L52500,-16875 L60000,0 L90000,0 L94609.375,-13535.15625 L100625,-15468.75 L115000,0 L129375,15468.75 L135390.625,13535.15625 L140000,0 L170000,0 L177500,7500 L185000,10000 L192500,7500 L200000,0 L230000,0 L234179.6875,-4429.6875 L239062.5,-5062.5 L250000,0 L260937.5,5062.5 L265820.3125,4429.6875 L270000,0 L300000,0" fill="none" stroke="#555555" stroke-width="2880"/>
-  <circle cx="30000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="37500" cy="-16875" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="45000" cy="-22500" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="52500" cy="-16875" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="60000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="90000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="94609.375" cy="-13535.15625" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="100625" cy="-15468.75" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="115000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="129375" cy="15468.75" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="135390.625" cy="13535.15625" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="140000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="170000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="177500" cy="7500" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="185000" cy="10000" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="192500" cy="7500" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="200000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="230000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="234179.6875" cy="-4429.6875" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="239062.5" cy="-5062.5" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="250000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="260937.5" cy="5062.5" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="265820.3125" cy="4429.6875" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="270000" cy="0" r="2520" fill="#e74c3c" stroke="none"/>
-  <circle cx="0.000" cy="0.000" r="7200.000" fill="#ffffff" stroke="#000000" stroke-width="1800.000"/>
-  <circle cx="300000.000" cy="0.000" r="7200.000" fill="#ffffff" stroke="#000000" stroke-width="1800.000"/>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.000" height="300.000" viewBox="0 0 600.000 300.000">
+  <text x="10" y="17.55" font-family="monospace" font-size="13.50" fill="#555555">scale=1e3  26 pts</text>
+  <text x="10" y="33.75" font-family="monospace" font-size="8.78" fill="#999999">EO=0.606268  EC=1.000000  NEO=1.000000</text>
+  <path d="M150.000,150.000 L180.000,150.000 L187.500,133.125 L195.000,127.500 L202.500,133.125 L210.000,150.000 L240.000,150.000 L244.609,136.465 L250.625,134.531 L265.000,150.000 L279.375,165.469 L285.391,163.535 L290.000,150.000 L320.000,150.000 L327.500,157.500 L335.000,160.000 L342.500,157.500 L350.000,150.000 L380.000,150.000 L384.180,145.570 L389.062,144.938 L400.000,150.000 L410.938,155.062 L415.820,154.430 L420.000,150.000 L450.000,150.000" fill="none" stroke="#555555" stroke-width="2.880"/>
+  <circle cx="180.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="187.500" cy="133.125" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="195.000" cy="127.500" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="202.500" cy="133.125" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="210.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="240.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="244.609" cy="136.465" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="250.625" cy="134.531" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="265.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="279.375" cy="165.469" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="285.391" cy="163.535" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="290.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="320.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="327.500" cy="157.500" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="335.000" cy="160.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="342.500" cy="157.500" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="350.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="380.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="384.180" cy="145.570" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="389.062" cy="144.938" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="400.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="410.938" cy="155.062" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="415.820" cy="154.430" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="420.000" cy="150.000" r="2.520" fill="#e74c3c" stroke="none"/>
+  <circle cx="150.000" cy="150.000" r="7.200" fill="#ffffff" stroke="#000000" stroke-width="1.800"/>
+  <circle cx="450.000" cy="150.000" r="7.200" fill="#ffffff" stroke="#000000" stroke-width="1.800"/>
 </svg>
