@@ -169,6 +169,46 @@ def read_graphml(
     return G
 
 
+def _default_node_dim(G: nx.Graph) -> float:
+    """Fallback node diameter (width/height) for nodes lacking sizing attrs.
+
+    Returns 4% of the bounding-box diagonal (i.e. 2% radius), so the default
+    scales with the drawing instead of being a fixed 30 regardless of
+    coordinate scale. Falls back to 30.0 for empty/degenerate drawings.
+    """
+    xs, ys = [], []
+    for _, a in G.nodes(data=True):
+        try:
+            xs.append(float(a["x"]))
+            ys.append(float(a["y"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not xs:
+        return 30.0
+    diag = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
+    return 0.04 * diag if diag > 0 else 30.0
+
+
+def _node_wh(attrs: dict, default_dim: float) -> tuple:
+    """Resolve (width, height) for a node: explicit w/h > 2*radius > default."""
+    if "radius" in attrs:
+        try:
+            r_dim = 2.0 * float(attrs["radius"])
+        except (TypeError, ValueError):
+            r_dim = default_dim
+    else:
+        r_dim = default_dim
+    try:
+        w = float(attrs.get("width", r_dim))
+    except (TypeError, ValueError):
+        w = r_dim
+    try:
+        h = float(attrs.get("height", r_dim))
+    except (TypeError, ValueError):
+        h = r_dim
+    return w, h
+
+
 def write_graphml(
     G: nx.Graph,
     filename: str,
@@ -179,8 +219,10 @@ def write_graphml(
 
     Node attributes recognised on output: `shape` (defaults to "ellipse"),
     `label` (defaults to empty), `colour`/`color` (defaults to "#FFCC00"),
-    `width`/`height` (defaults to 30), `x`/`y` (via `graphics` dict if
-    `gml_format=True`, else directly). Edge bends use the `bends` attribute.
+    `width`/`height` (default: `2 * radius` if a `radius` attr is present,
+    else 4% of the drawing's bounding-box diagonal — so the default scales
+    with the drawing), `x`/`y` (via `graphics` dict if `gml_format=True`,
+    else directly). Edge bends use the `bends` attribute.
 
     Set `yed_corner_anchor=True` to emit a file that matches yEd's own
     convention — `x`/`y` shifted to the top-left corner of each node's
@@ -215,6 +257,8 @@ def write_graphml(
     )
     root.appendChild(graph_node)
 
+    default_dim = _default_node_dim(G)
+
     for n in G.nodes():
         attrs = G.nodes[n]
         node = doc.createElement("node")
@@ -232,8 +276,7 @@ def write_graphml(
         )
         shape_element.appendChild(fill)
 
-        w = float(attrs.get("width", 30.0))
-        h = float(attrs.get("height", 30.0))
+        w, h = _node_wh(attrs, default_dim)
         geometry = doc.createElement("y:Geometry")
         geometry.setAttribute("height", str(h))
         geometry.setAttribute("width", str(w))

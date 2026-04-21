@@ -130,23 +130,59 @@ def _format_number(value) -> str:
         return "0.0"
 
 
+def _default_node_dim(G: nx.Graph) -> float:
+    """Fallback node diameter (width/height) for nodes lacking sizing attrs.
+
+    Returns 4% of the bounding-box diagonal (i.e. 2% radius), so the default
+    scales with the drawing instead of being a fixed 30 regardless of
+    coordinate scale. Falls back to 30.0 for empty/degenerate drawings.
+    """
+    xs, ys = [], []
+    for _, a in G.nodes(data=True):
+        try:
+            xs.append(float(a["x"]))
+            ys.append(float(a["y"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not xs:
+        return 30.0
+    diag = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
+    return 0.04 * diag if diag > 0 else 30.0
+
+
+def _node_wh(attrs: dict, default_dim: float) -> tuple:
+    """Resolve (width, height) for a node: explicit w/h > 2*radius > default."""
+    if "radius" in attrs:
+        try:
+            r_dim = 2.0 * float(attrs["radius"])
+        except (TypeError, ValueError):
+            r_dim = default_dim
+    else:
+        r_dim = default_dim
+    return attrs.get("width", r_dim), attrs.get("height", r_dim)
+
+
 def write_gml(G: nx.Graph, output_file: str) -> None:
     """Write a NetworkX graph to a yEd-flavoured GML file.
 
     Node attributes honoured on output: `x`/`y` (default 0), `width`/`height`
-    (default 30), `shape` (default "ellipse"), `colour`/`color` (default
+    (default: `2 * radius` if a `radius` attr is present, else 4% of the
+    drawing's bounding-box diagonal — so the default scales with the
+    drawing), `shape` (default "ellipse"), `colour`/`color` (default
     "#FFCC00"), `label` (optional). Edge attributes honoured: `bends` (list
     of (x, y) tuples or dicts with `x`/`y`), `colour`/`color` (default
     "#000000"), `stroke_width` (default 1.0), `label`, `weight`.
     """
     directed = 1 if isinstance(G, (nx.DiGraph, nx.MultiDiGraph)) else 0
     lines: list = ["graph [", f"  directed {directed}"]
+    default_dim = _default_node_dim(G)
 
     for n, attrs in G.nodes(data=True):
         x = _format_number(attrs.get("x", 0.0))
         y = _format_number(attrs.get("y", 0.0))
-        w = _format_number(attrs.get("width", 30.0))
-        h = _format_number(attrs.get("height", 30.0))
+        w_val, h_val = _node_wh(attrs, default_dim)
+        w = _format_number(w_val)
+        h = _format_number(h_val)
         shape = str(attrs.get("shape", "ellipse"))
         colour = str(attrs.get("colour", attrs.get("color", "#FFCC00")))
         label = attrs.get("label")
