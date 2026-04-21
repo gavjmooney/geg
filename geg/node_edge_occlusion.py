@@ -91,6 +91,7 @@ def node_edge_occlusion(
     samples_per_curve: int = 100,
     *,
     bbox: Optional[Tuple[float, float, float, float]] = None,
+    flatness_fraction: Optional[float] = None,
 ) -> float:
     """Node-Edge Occlusion score in [0, 1] (1 = no occlusion).
 
@@ -102,8 +103,13 @@ def node_edge_occlusion(
             diagonal. Default 0.02 (nodes with radii typically render ~5-15%
             of the diagonal, so a 2% buffer around the disk captures visible
             overlap).
-        samples_per_curve: Curve-sampling density used to flatten Bezier
-            segments into straight pieces before the distance test.
+        samples_per_curve: Fixed-N curve-sampling density used to flatten
+            Bezier segments into straight pieces. Ignored when
+            `flatness_fraction` is set.
+        flatness_fraction: Adaptive curvature-aware flattening tolerance as
+            a fraction of the node-bbox diagonal. When set, segments are
+            recursively split until the midpoint-to-chord distance drops
+            below `flatness_fraction · diag` instead of using a fixed N.
         bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
             positions. If None, computed via
             `get_bounding_box(G, promote=False)`. NEO uses the node-only
@@ -137,6 +143,7 @@ def node_edge_occlusion(
         return 1.0
 
     epsilon = epsilon_fraction * diag
+    flatness_tol = flatness_fraction * diag if flatness_fraction is not None else None
     pos = {n: (x, y) for n, x, y, _ in nodes}
 
     edges = [
@@ -152,7 +159,9 @@ def node_edge_occlusion(
         source = pos[u]
         target = pos[v]
         poly = edge_polyline(
-            source, target, data.get("path"), samples_per_curve=samples_per_curve
+            source, target, data.get("path"),
+            samples_per_curve=samples_per_curve,
+            flatness_tol=flatness_tol,
         )
         segments = list(zip(poly, poly[1:]))
         if not segments:

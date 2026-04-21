@@ -14,13 +14,13 @@ counting near-parallel overlaps as separate crossings.
 import itertools
 import math
 import xml.etree.ElementTree as ET
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, List, Optional, Tuple, Union
 
 import networkx as nx
 from svgpathtools import Path
 
 from ._geometry import bboxes_intersect, segment_intersection
-from ._paths import flatten_path_to_segments, parse_path
+from ._paths import flatten_path_adaptive, flatten_path_to_segments, parse_path
 
 CrossingHit = Tuple[Tuple[float, float], float]
 
@@ -68,11 +68,19 @@ def _score(n_crossings: int, c_max: float) -> float:
     return max(0.0, ec)
 
 
+def _polyline_to_segments(poly):
+    """Convert an adaptive polyline (list of points) into consecutive segment
+    pairs, matching the contract of `_paths.flatten_path_to_segments`."""
+    return [(a, b) for a, b in zip(poly, poly[1:])]
+
+
 def edge_crossings(
     G: nx.Graph,
     return_crossings: bool = False,
     samples_per_curve: int = 100,
     min_angle_tol: float = 2.5,
+    *,
+    flatness_fraction: Optional[float] = None,
 ) -> Union[float, Tuple[float, List[CrossingHit]]]:
     """Count edge crossings and compute the EC metric (paper §3.2 eq. (3)).
 
@@ -81,18 +89,39 @@ def edge_crossings(
     segment intersection). Near-parallel crossings (angle < `min_angle_tol`)
     are discarded.
 
+    Flattening mode:
+      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
+        segment gets `samples_per_curve` samples (paper §3.2 prescribed).
+      - `flatness_fraction` set: adaptive curvature-aware mode — segments
+        are recursively split until midpoint-to-chord deviation drops below
+        `flatness_fraction · node_bbox_diagonal`. Typical value 0.005.
+
     Args:
         G: NetworkX graph with edge 'path' attributes.
         return_crossings: If True, also return the list of crossings.
-        samples_per_curve: Sample density used to linearise curved segments.
+        samples_per_curve: Fixed-N sample density (ignored when
+            flatness_fraction is set).
         min_angle_tol: Minimum crossing angle (degrees) to keep a crossing.
+        flatness_fraction: Adaptive-mode tolerance as a fraction of the
+            node bbox diagonal. When set, switches to curvature-aware
+            sampling.
 
     Returns:
         Either the EC score in [0, 1], or (score, crossings) where each
         crossing is ((x, y), angle_deg).
     """
     edges = list(G.edges(data=True))
-    polys = [flatten_path_to_segments(d["path"], samples_per_curve) for _, _, d in edges]
+
+    if flatness_fraction is not None:
+        from .geg_parser import get_bounding_box
+        bbox = get_bounding_box(G, promote=False)
+        diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+        tol = flatness_fraction * diag if diag > 0 else 1.0
+        polys = [_polyline_to_segments(
+            flatten_path_adaptive(d["path"], tol)
+        ) for _, _, d in edges]
+    else:
+        polys = [flatten_path_to_segments(d["path"], samples_per_curve) for _, _, d in edges]
 
     crossings: List[CrossingHit] = []
     for (i, _), (j, _) in itertools.combinations(enumerate(edges), 2):

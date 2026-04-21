@@ -10,11 +10,29 @@ relative to the horizontal. Straight edges are the special case k_e = 1.
 
 import math
 import warnings
+from typing import Optional
 
 import networkx as nx
 
 from ._geometry import distance
 from ._paths import edge_polyline
+
+
+def _flatness_tol_from_fraction(G: nx.Graph, fraction: float) -> float:
+    """Convert a fraction-of-diagonal to an absolute flatness tolerance.
+
+    Uses the node-position bbox diagonal (curve geometry is what's being
+    flattened — tying the tolerance to the curve-promoted bbox would be
+    circular).
+    """
+    from .geg_parser import get_bounding_box
+    bbox = get_bounding_box(G, promote=False)
+    diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+    if diag <= 0:
+        # Degenerate (all nodes coincident); fall back to a unit tolerance
+        # that won't trigger spurious errors from flatten_path_adaptive.
+        return 1.0
+    return fraction * diag
 
 
 def _segment_angle_deg(p0, p1) -> float:
@@ -51,7 +69,12 @@ def _edge_deviation(poly) -> float:
     return delta
 
 
-def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 100) -> float:
+def edge_orthogonality(
+    G: nx.Graph,
+    samples_per_curve: int = 100,
+    *,
+    flatness_fraction: Optional[float] = None,
+) -> float:
     """Edge orthogonality metric in [0, 1], per paper §3.2 eq. (5)-(6).
 
     Each edge is treated as a polyline: straight edges are a single segment,
@@ -62,9 +85,22 @@ def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 100) -> float:
 
     Edgeless graphs return 1.0 (vacuously orthogonal).
 
+    Flattening mode:
+      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
+        curve segment gets `samples_per_curve` samples (paper §3.2
+        prescribed, default 100).
+      - `flatness_fraction` set: adaptive curvature-aware mode — segments
+        are recursively split until the midpoint-to-chord distance drops
+        below `flatness_fraction × node_bbox_diagonal`. `samples_per_curve`
+        is ignored. Typical value 0.005 (0.5% deviation).
+
     Args:
         G: NetworkX graph with node 'x', 'y' and optional edge 'path' attrs.
-        samples_per_curve: Sample density for non-line path segments (Bezier etc).
+        samples_per_curve: Fixed-N sample density (ignored when
+            flatness_fraction is set).
+        flatness_fraction: Adaptive-mode tolerance as a fraction of the
+            node-position bbox diagonal. When set, switches to curvature-
+            aware sampling.
 
     Returns:
         Float in [0, 1], 1 = all edges axis-aligned.
@@ -72,11 +108,20 @@ def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 100) -> float:
     if G.number_of_edges() == 0:
         return 1.0
 
+    flatness_tol = (
+        _flatness_tol_from_fraction(G, flatness_fraction)
+        if flatness_fraction is not None else None
+    )
+
     deviations = []
     for u, v, attrs in G.edges(data=True):
         source = (G.nodes[u]["x"], G.nodes[u]["y"])
         target = (G.nodes[v]["x"], G.nodes[v]["y"])
-        poly = edge_polyline(source, target, attrs.get("path"), samples_per_curve=samples_per_curve)
+        poly = edge_polyline(
+            source, target, attrs.get("path"),
+            samples_per_curve=samples_per_curve,
+            flatness_tol=flatness_tol,
+        )
         deviations.append(_edge_deviation(poly))
 
     return 1.0 - sum(deviations) / len(deviations)
