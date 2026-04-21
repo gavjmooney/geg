@@ -1,24 +1,37 @@
-"""Generate per-test SVGs for human review.
+"""Generate per-test manual-verification SVGs + a browseable HTML viewer.
 
-Each SVG shows:
-  - **Left column** — the graph the test operates on, where it can be
-    reconstructed from the test source; else a placeholder.
-  - **Right column** — test docstring (plain-English "what this checks")
-    and the test's source code.
+Each test gets an SVG with the graph(s) it operates on rendered from the
+test's actual code (executed in a sandboxed namespace), plus the test
+docstring and source. A single `viewer.html` at the output-folder root
+provides a sidebar / prev-next / keyboard-shortcut UI so a reviewer can
+flick through all tests without losing context.
 
-Graph extraction is best-effort heuristic. The text panel is exhaustive —
-every test gets its full source + docstring regardless. The idea is that
-a human can open any SVG, glance at the graph (if present), read the
-description, and verify the assertions make sense without having to jump
-between files.
-
-Not a pytest test itself (leading underscore in module name keeps it out
-of collection). Run from the package root:
+Not a pytest test itself — the leading underscore keeps pytest's
+collection from picking this file up. Run from the package root:
 
     python -m tests._manual_verification
 
-Output goes to `manual_verification/` at the repo root; that directory
-is gitignored. Regenerate whenever test expectations change.
+Output goes to `manual_verification/` (gitignored). Regenerate whenever
+test expectations or bodies change.
+
+## Graph extraction
+
+The old regex approach was too fragile. The new approach runs each
+test's body in a sandbox:
+  - The sandbox inherits the test module's full namespace, so module-
+    level helpers like `_layout` and `_straight` are available.
+  - `self` is bound to an instance of the test's class (when the test
+    is a method), so class helpers like `self._bezier_graph()` work.
+  - Common pytest primitives (`pytest.approx`, `pytest.raises`,
+    `pytest.mark.parametrize`) are stubbed so assertions and context
+    managers don't abort the exec prematurely.
+  - Fixture args (`tmp_path`, `monkeypatch`) are stubbed.
+  - Any exception raised partway through is swallowed — we still
+    capture whatever `nx.Graph` objects were built before the abort.
+
+For tests that build several graphs (typical for invariance tests
+— `G` and `G_rotated`, etc.), the SVG renders all of them in a
+gallery so the reviewer sees both sides of the comparison.
 """
 
 from __future__ import annotations
@@ -29,9 +42,12 @@ import inspect
 import math
 import re
 import sys
+import tempfile
+import textwrap
+import traceback
 from html import escape as html_escape
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import networkx as nx
 
@@ -41,57 +57,112 @@ OUT_DIR = ROOT / "manual_verification"
 TESTS_DIR = ROOT / "tests"
 
 
-TestInfo = Tuple[str, Optional[str], str, str, Optional[str], Optional[str], Optional[str]]
-# (module_stem, class_name_or_None, func_name, source_code,
-#  module_docstring, class_docstring, function_docstring)
+# =====================================================================
+# Pytest / fixture stubs for the sandboxed exec.
+# =====================================================================
 
 
-# ---------- test enumeration ----------
+class _StubApprox:
+    def __init__(self, *a, **kw):
+        self.val = a[0] if a else None
 
-def _iter_tests() -> Iterator[TestInfo]:
-    """Walk every `tests/test_*.py`, yielding one record per test function.
+    def __eq__(self, other): return True
+    def __ne__(self, other): return False
+    def __repr__(self): return f"approx({self.val!r})"
 
-    Test-class methods are emitted individually; module-level test functions
-    are emitted with `class_name = None`.
-    """
+
+class _StubRaises:
+    def __init__(self, *a, **kw): pass
+    def __enter__(self): return self
+    def __exit__(self, *a): return True  # swallow
+    def __call__(self, *a, **kw): return self
+
+
+class _StubMark:
+    def __getattr__(self, name):
+        # Any decorator access (pytest.mark.parametrize, .skip, etc.)
+        # returns a no-op passthrough decorator.
+        def passthrough(*a, **kw):
+            def decorator(f): return f
+            return decorator
+        return passthrough
+
+
+class _StubPytest:
+    approx = _StubApprox
+    raises = _StubRaises
+    fixture = staticmethod(lambda *a, **kw: (lambda f: f))
+    param = staticmethod(lambda *a, **kw: a)
+    mark = _StubMark()
+
+    class warns:
+        def __init__(self, *a, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return True
+
+
+class _StubSelf:
+    """Fallback `self` for when we can't instantiate the test class.
+    Every attribute access yields another stub, so chained helper
+    lookups don't crash."""
+    def __getattr__(self, name): return _StubSelf()
+    def __call__(self, *a, **kw): return _StubSelf()
+
+
+class _StubMonkeypatch:
+    def setattr(self, *a, **kw): pass
+    def setenv(self, *a, **kw): pass
+    def delattr(self, *a, **kw): pass
+    def delenv(self, *a, **kw): pass
+    def chdir(self, *a, **kw): pass
+    def syspath_prepend(self, *a, **kw): pass
+
+
+# =====================================================================
+# Test enumeration + sandboxed execution.
+# =====================================================================
+
+
+TestInfo = Tuple[str, Optional[str], str, str,
+                 Optional[str], Optional[str], Optional[str]]
+# (module_stem, class_name_or_None, func_name, source,
+#  module_doc, class_doc, function_doc)
+
+
+def _iter_tests() -> List[TestInfo]:
+    """Collect every test function from tests/test_*.py (without running)."""
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
+    out: List[TestInfo] = []
     for test_file in sorted(TESTS_DIR.glob("test_*.py")):
         mod_name = f"tests.{test_file.stem}"
         try:
             mod = importlib.import_module(mod_name)
         except Exception as exc:
-            print(f"  skipping {mod_name}: {type(exc).__name__}: {exc}")
+            print(f"  skip {mod_name}: {type(exc).__name__}: {exc}")
             continue
-
         for name, obj in inspect.getmembers(mod):
-            # Test classes.
             if (
                 name.startswith("Test")
                 and inspect.isclass(obj)
                 and getattr(obj, "__module__", None) == mod_name
             ):
                 for mname, mobj in inspect.getmembers(obj):
-                    if not mname.startswith("test_"):
-                        continue
-                    if not inspect.isfunction(mobj):
-                        continue
-                    yield (
-                        test_file.stem, name, mname,
-                        _safe_source(mobj),
-                        mod.__doc__, obj.__doc__, mobj.__doc__,
-                    )
-            # Module-level test functions.
+                    if mname.startswith("test_") and inspect.isfunction(mobj):
+                        out.append((
+                            test_file.stem, name, mname, _safe_source(mobj),
+                            mod.__doc__, obj.__doc__, mobj.__doc__,
+                        ))
             elif (
                 name.startswith("test_")
                 and inspect.isfunction(obj)
                 and getattr(obj, "__module__", None) == mod_name
             ):
-                yield (
-                    test_file.stem, None, name,
-                    _safe_source(obj),
+                out.append((
+                    test_file.stem, None, name, _safe_source(obj),
                     mod.__doc__, None, obj.__doc__,
-                )
+                ))
+    return out
 
 
 def _safe_source(obj) -> str:
@@ -101,191 +172,171 @@ def _safe_source(obj) -> str:
         return "# (source unavailable)"
 
 
-# ---------- graph extraction (best-effort heuristic) ----------
+def _sandbox_namespace(test_file: str, cls_name: Optional[str]) -> Dict:
+    """Build the execution namespace: test-module globals + pytest stubs
+    + fixture stubs + a reasonable `self`."""
+    mod = importlib.import_module(f"tests.{test_file}")
+    ns: Dict = dict(vars(mod))
+    ns["pytest"] = _StubPytest()
+    # Stub `tmp_path` in the OS temp directory so the sandbox doesn't
+    # leak files into the repo. Shared across all test execs — fine
+    # since we only care about side-effects on nx.Graph objects, not
+    # on disk state.
+    tmp = Path(tempfile.gettempdir()) / "geg_manual_verification_sandbox"
+    tmp.mkdir(exist_ok=True)
+    ns["tmp_path"] = tmp
+    ns["monkeypatch"] = _StubMonkeypatch()
 
-_GRAPH_CTORS: Dict[str, Callable[[int], nx.Graph]] = {
-    "path_graph":         nx.path_graph,
-    "cycle_graph":        nx.cycle_graph,
-    "complete_graph":     nx.complete_graph,
-    "star_graph":         nx.star_graph,
-    "wheel_graph":        nx.wheel_graph,
-    "petersen_graph":     lambda _n: nx.petersen_graph(),
-}
+    if cls_name:
+        cls = getattr(mod, cls_name, None)
+        if cls is not None:
+            try:
+                self_obj: object = cls()
+            except Exception:
+                self_obj = _StubSelf()
+        else:
+            self_obj = _StubSelf()
+        ns["self"] = self_obj
+    return ns
 
 
-def _layout_coords(G: nx.Graph) -> None:
-    """Attach x/y attributes via NetworkX spring layout (deterministic seed)."""
+def _extract_func_body(src: str) -> Optional[ast.Module]:
+    """Parse `src` and return an ast.Module containing just the test
+    function's body statements — no decorators, no def line, no return
+    type annotation. Subsequent `compile()` can turn this straight into
+    bytecode.
+
+    `inspect.getsource` on a class method preserves the class-level
+    indent, which `ast.parse` rejects. Dedent first.
+    """
+    src = textwrap.dedent(src)
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Strip decorators; they may reference pytest.mark.parametrize
+            # with data that isn't usefully executable in our sandbox.
+            node.decorator_list = []
+            return ast.Module(body=node.body, type_ignores=[])
+    return None
+
+
+def _exec_and_capture_graphs(
+    test_file: str, cls_name: Optional[str], src: str,
+) -> Tuple[List[Tuple[str, nx.Graph]], Optional[str]]:
+    """Execute the test's body in a sandbox, returning any captured
+    graphs and, if execution aborted, the exception name."""
+    body = _extract_func_body(src)
+    if body is None:
+        return [], "parse failed"
+    try:
+        ns = _sandbox_namespace(test_file, cls_name)
+    except Exception as exc:
+        return [], f"{type(exc).__name__} (namespace): {exc}"
+
+    pre_ids = {id(v) for v in ns.values()
+               if isinstance(v, (nx.Graph, nx.DiGraph, nx.MultiGraph))}
+
+    err: Optional[str] = None
+    try:
+        code = compile(body, f"<{test_file}:{cls_name}:exec>", "exec")
+        exec(code, ns)
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"
+
+    graphs: List[Tuple[str, nx.Graph]] = []
+    for name, val in ns.items():
+        if name.startswith("__"):
+            continue
+        if isinstance(val, (nx.Graph, nx.DiGraph, nx.MultiGraph)):
+            if id(val) in pre_ids:
+                continue
+            if val.number_of_nodes() == 0:
+                continue
+            graphs.append((name, val))
+    return graphs, err
+
+
+# =====================================================================
+# Graph rendering.
+# =====================================================================
+
+
+def _ensure_coords(G: nx.Graph) -> None:
+    """If nodes lack x/y attributes, compute a spring layout in place."""
+    has_coords = all(
+        "x" in a and "y" in a
+        for _, a in G.nodes(data=True)
+    )
+    if has_coords or G.number_of_nodes() == 0:
+        return
     try:
         pos = nx.spring_layout(G, seed=0)
     except Exception:
-        # Disconnected / tiny graphs — fall back to a simple circular layout.
         pos = nx.circular_layout(G)
     for n, (x, y) in pos.items():
         G.nodes[n]["x"] = float(x) * 100.0
         G.nodes[n]["y"] = float(y) * 100.0
 
 
-def _try_fixture_graph(src: str) -> Optional[nx.Graph]:
-    """If source references `all_fixtures()["NAME"]`, build that fixture."""
-    m = re.search(r'all_fixtures\(\)\[\s*["\']([\w_]+)["\']\s*\]', src)
-    if not m:
-        return None
-    try:
-        from tests.fixtures._builder import all_fixtures
-        return all_fixtures()[m.group(1)].build()
-    except (ImportError, KeyError):
-        return None
-
-
-def _try_nx_ctor(src: str) -> Optional[nx.Graph]:
-    """Recognise a few common `nx.<ctor>(N)` patterns."""
-    for ctor, fn in _GRAPH_CTORS.items():
-        m = re.search(rf"nx\.{ctor}\(\s*(\d*)\s*\)", src)
-        if not m:
-            continue
-        try:
-            n = int(m.group(1)) if m.group(1) else 5
-            G = fn(n)
-            _layout_coords(G)
-            return G
-        except Exception:
-            continue
-    return None
-
-
-def _try_bipartite(src: str) -> Optional[nx.Graph]:
-    m = re.search(r"nx\.complete_bipartite_graph\(\s*(\d+)\s*,\s*(\d+)\s*\)", src)
-    if not m:
-        return None
-    try:
-        G = nx.complete_bipartite_graph(int(m.group(1)), int(m.group(2)))
-        _layout_coords(G)
-        return G
-    except Exception:
-        return None
-
-
-_INLINE_ADD_NODE = re.compile(
-    r"""add_node\(\s*         # G.add_node(
-        (?P<id>["']?[\w_]+["']?|\d+)
-        \s*,\s*x\s*=\s*(?P<x>-?\d+(?:\.\d+)?)
-        \s*,\s*y\s*=\s*(?P<y>-?\d+(?:\.\d+)?)""",
-    re.VERBOSE,
-)
-_INLINE_ADD_EDGE = re.compile(
-    r"""add_edge\(\s*
-        (?P<u>["']?[\w_]+["']?|\d+)
-        \s*,\s*(?P<v>["']?[\w_]+["']?|\d+)""",
-    re.VERBOSE,
-)
-
-
-def _try_inline_graph(src: str) -> Optional[nx.Graph]:
-    """Parse simple inline `G.add_node(..., x=X, y=Y)` + `G.add_edge(...)`
-    patterns. Misses a lot of real tests but catches the common case
-    where a test builds a small named graph with explicit coordinates."""
-    nodes = list(_INLINE_ADD_NODE.finditer(src))
-    if len(nodes) < 2:
-        return None
-    G = nx.Graph()
-    for m in nodes:
-        nid = m.group("id").strip("'\"")
-        try:
-            nid_cast: object = int(nid) if nid.isdigit() else nid
-            G.add_node(nid_cast, x=float(m.group("x")), y=float(m.group("y")))
-        except ValueError:
-            continue
-    for m in _INLINE_ADD_EDGE.finditer(src):
-        u = m.group("u").strip("'\"")
-        v = m.group("v").strip("'\"")
-        u_c: object = int(u) if u.isdigit() else u
-        v_c: object = int(v) if v.isdigit() else v
-        if u_c in G and v_c in G:
-            G.add_edge(u_c, v_c)
-    return G if G.number_of_nodes() >= 2 else None
-
-
-def try_extract_graph(src: str) -> Optional[nx.Graph]:
-    for strategy in (_try_fixture_graph, _try_nx_ctor, _try_bipartite, _try_inline_graph):
-        G = strategy(src)
-        if G is not None and G.number_of_nodes() > 0:
-            return G
-    return None
-
-
-# ---------- SVG rendering ----------
-
-GRAPH_W = 560
-GRAPH_H = 560
-TEXT_X = GRAPH_W + 40
-TEXT_W = 760
-CANVAS_W = TEXT_X + TEXT_W + 40   # 1400
-HEADER_H = 50
-BODY_H = 720
-FOOTER_H = 30
-CANVAS_H = HEADER_H + BODY_H + FOOTER_H  # 800
-
-
-def _graph_panel_svg(G: Optional[nx.Graph], x0: int, y0: int) -> str:
-    """Render the graph (nodes + edges) into a region of the SVG."""
-    box_border = (
-        f'<rect x="{x0}" y="{y0}" width="{GRAPH_W}" height="{GRAPH_H}" '
+def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
+                      label: Optional[str] = None) -> str:
+    """Render a single graph into the given rectangle of the parent SVG."""
+    _ensure_coords(G)
+    parts: List[str] = [
+        f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" '
         f'fill="#fafbfc" stroke="#e1e4e8" stroke-width="1"/>'
-    )
-    if G is None or G.number_of_nodes() == 0:
-        return (
-            box_border
-            + f'<text x="{x0 + GRAPH_W // 2}" y="{y0 + GRAPH_H // 2}" '
-            f'font-family="sans-serif" font-size="16" fill="#8b949e" '
-            f'text-anchor="middle">(no graph extracted — see source)</text>'
+    ]
+    if G.number_of_nodes() == 0:
+        parts.append(
+            f'<text x="{x0 + w / 2}" y="{y0 + h / 2}" '
+            f'font-family="sans-serif" font-size="14" fill="#8b949e" '
+            f'text-anchor="middle">(empty graph)</text>'
         )
+        return "\n".join(parts)
 
-    # Compute bbox from node x/y (if present) else spring layout.
-    xs, ys = [], []
-    missing = False
-    for _, attrs in G.nodes(data=True):
-        x, y = attrs.get("x"), attrs.get("y")
-        if x is None or y is None:
-            missing = True
-            break
-        try:
-            xs.append(float(x)); ys.append(float(y))
-        except (TypeError, ValueError):
-            missing = True; break
-    if missing or not xs:
-        _layout_coords(G)
-        xs = [float(a["x"]) for _, a in G.nodes(data=True)]
-        ys = [float(a["y"]) for _, a in G.nodes(data=True)]
-
-    pad = max(max(xs) - min(xs), max(ys) - min(ys), 1.0) * 0.15
+    xs = [float(a["x"]) for _, a in G.nodes(data=True)]
+    ys = [float(a["y"]) for _, a in G.nodes(data=True)]
+    pad_frac = 0.15
+    extent = max(max(xs) - min(xs), max(ys) - min(ys), 1e-9)
+    pad = extent * pad_frac
     min_x, max_x = min(xs) - pad, max(xs) + pad
     min_y, max_y = min(ys) - pad, max(ys) + pad
-    extent = max(max_x - min_x, max_y - min_y, 1e-9)
-    scale = (GRAPH_W - 40) / extent
-    cx_off = x0 + 20 - min_x * scale + (GRAPH_W - 40 - (max_x - min_x) * scale) / 2
-    cy_off = y0 + 20 - min_y * scale + (GRAPH_H - 40 - (max_y - min_y) * scale) / 2
+    scale = min(w - 30, h - 30) / max(max_x - min_x, max_y - min_y, 1e-9)
 
-    def tx(a):
-        return a["x"] * scale + cx_off, a["y"] * scale + cy_off
+    dx = (w - (max_x - min_x) * scale) / 2
+    dy = (h - (max_y - min_y) * scale) / 2
+    ox = x0 + dx - min_x * scale
+    oy = y0 + dy - min_y * scale
 
-    parts = [box_border]
-    # Edges first (so nodes overlay).
+    def tx(a: dict) -> Tuple[float, float]:
+        return float(a["x"]) * scale + ox, float(a["y"]) * scale + oy
+
+    # Optional header label.
+    if label:
+        parts.append(
+            f'<text x="{x0 + 8}" y="{y0 + 16}" '
+            f'font-family="monospace" font-size="12" '
+            f'fill="#0366d6" font-weight="600">{html_escape(label)}</text>'
+        )
+
+    # Edges.
     for u, v, attrs in G.edges(data=True):
-        ux, uy = tx(G.nodes[u])
-        vx, vy = tx(G.nodes[v])
         path = attrs.get("path")
         if path:
-            # Rescale path coords via svgpathtools (robust for Q / C / H / V).
             try:
                 import svgpathtools as svgp
                 p = svgp.parse_path(path)
                 for seg in p:
-                    for sattr in ("start", "control", "control1", "control2", "end"):
+                    for sattr in ("start", "control", "control1",
+                                  "control2", "end"):
                         if hasattr(seg, sattr):
                             z = getattr(seg, sattr)
                             setattr(seg, sattr, complex(
-                                z.real * scale + cx_off,
-                                z.imag * scale + cy_off,
+                                z.real * scale + ox,
+                                z.imag * scale + oy,
                             ))
                 parts.append(
                     f'<path d="{p.d()}" fill="none" '
@@ -294,15 +345,18 @@ def _graph_panel_svg(G: Optional[nx.Graph], x0: int, y0: int) -> str:
                 continue
             except Exception:
                 pass
+        ux, uy = tx(G.nodes[u])
+        vx, vy = tx(G.nodes[v])
         parts.append(
-            f'<line x1="{ux:.2f}" y1="{uy:.2f}" x2="{vx:.2f}" y2="{vy:.2f}" '
+            f'<line x1="{ux:.2f}" y1="{uy:.2f}" '
+            f'x2="{vx:.2f}" y2="{vy:.2f}" '
             f'stroke="#24292e" stroke-width="1.5"/>'
         )
 
-    # Nodes.
+    # Nodes with labels.
     r = 5
-    for n, attrs in G.nodes(data=True):
-        nx_, ny_ = tx(attrs)
+    for n, a in G.nodes(data=True):
+        nx_, ny_ = tx(a)
         parts.append(
             f'<circle cx="{nx_:.2f}" cy="{ny_:.2f}" r="{r}" '
             f'fill="#ffffff" stroke="#24292e" stroke-width="1.5"/>'
@@ -313,32 +367,87 @@ def _graph_panel_svg(G: Optional[nx.Graph], x0: int, y0: int) -> str:
             f'text-anchor="middle">{html_escape(str(n))}</text>'
         )
 
-    n = G.number_of_nodes(); m = G.number_of_edges()
+    # Footer: node/edge counts.
+    nn, mm = G.number_of_nodes(), G.number_of_edges()
     parts.append(
-        f'<text x="{x0 + 10}" y="{y0 + GRAPH_H - 10}" '
-        f'font-family="monospace" font-size="11" fill="#586069">'
-        f'{n} node{"s" if n != 1 else ""}, {m} edge{"s" if m != 1 else ""}</text>'
+        f'<text x="{x0 + w - 8}" y="{y0 + h - 8}" '
+        f'font-family="monospace" font-size="10" fill="#6a737d" '
+        f'text-anchor="end">'
+        f'{nn} nodes · {mm} edges</text>'
     )
     return "\n".join(parts)
 
 
-def _text_panel_svg(
-    test_file: str, cls_name: Optional[str], func_name: str,
-    src: str, cls_doc: Optional[str], func_doc: Optional[str],
-    x0: int, y0: int,
-) -> str:
-    qual = f"{cls_name}.{func_name}" if cls_name else func_name
-    loc = f"tests/{test_file}.py::{qual}"
+def _render_gallery(graphs: List[Tuple[str, nx.Graph]],
+                    x0: float, y0: float,
+                    total_w: float, total_h: float) -> str:
+    """Arrange 1–4+ graphs in a grid inside the left panel."""
+    if not graphs:
+        return (
+            f'<rect x="{x0}" y="{y0}" width="{total_w}" height="{total_h}" '
+            f'fill="#fafbfc" stroke="#e1e4e8" stroke-width="1"/>'
+            f'<text x="{x0 + total_w / 2}" y="{y0 + total_h / 2}" '
+            f'font-family="sans-serif" font-size="14" fill="#8b949e" '
+            f'text-anchor="middle">(no graph built by this test)</text>'
+        )
+    n = len(graphs)
+    if n == 1:
+        rows, cols = 1, 1
+    elif n == 2:
+        rows, cols = 1, 2
+    elif n <= 4:
+        rows, cols = 2, 2
+    elif n <= 6:
+        rows, cols = 2, 3
+    else:
+        rows, cols = 3, 3
+    cell_w = total_w / cols
+    cell_h = total_h / rows
+    parts: List[str] = []
+    for i, (name, G) in enumerate(graphs[: rows * cols]):
+        r, c = divmod(i, cols)
+        parts.append(_render_one_graph(
+            G,
+            x0 + c * cell_w + 4, y0 + r * cell_h + 4,
+            cell_w - 8, cell_h - 8,
+            label=name,
+        ))
+    if len(graphs) > rows * cols:
+        parts.append(
+            f'<text x="{x0 + total_w / 2}" y="{y0 + total_h - 4}" '
+            f'font-family="sans-serif" font-size="10" fill="#6a737d" '
+            f'text-anchor="middle">'
+            f'(showing {rows * cols} of {len(graphs)} captured graphs)</text>'
+        )
+    return "\n".join(parts)
 
-    html = []
-    html.append(
+
+# =====================================================================
+# Per-test SVG layout.
+# =====================================================================
+
+
+GRAPH_W = 560
+GRAPH_H = 560
+TEXT_X = GRAPH_W + 40
+TEXT_W = 760
+HEADER_H = 50
+BODY_H = 720
+FOOTER_H = 30
+CANVAS_W = TEXT_X + TEXT_W + 40
+CANVAS_H = HEADER_H + BODY_H + FOOTER_H
+
+
+def _text_panel_foreign(qual: str, loc: str,
+                        cls_doc: Optional[str], func_doc: Optional[str],
+                        src: str, x0: int, y0: int,
+                        exec_err: Optional[str]) -> str:
+    html = [
         f'<h2 style="margin:0 0 6px 0;font-size:15px;color:#24292e;'
-        f'font-family:sans-serif;">{html_escape(qual)}</h2>'
-    )
-    html.append(
+        f'font-family:sans-serif;">{html_escape(qual)}</h2>',
         f'<p style="margin:0 0 10px 0;font-size:11px;color:#6a737d;'
-        f'font-family:monospace;">{html_escape(loc)}</p>'
-    )
+        f'font-family:monospace;">{html_escape(loc)}</p>',
+    ]
     if cls_doc:
         html.append(
             f'<div style="background:#f1f8ff;border-left:3px solid #0366d6;'
@@ -353,6 +462,14 @@ def _text_panel_svg(
             f'font-family:sans-serif;white-space:pre-wrap;">'
             f'<b>What this checks:</b>\n{html_escape(func_doc.strip())}</div>'
         )
+    if exec_err:
+        html.append(
+            f'<div style="background:#fff5f5;border-left:3px solid #d73a49;'
+            f'padding:6px 10px;margin:0 0 8px 0;font-size:11px;color:#86181d;'
+            f'font-family:monospace;">'
+            f'<b>Sandbox exec raised:</b> {html_escape(exec_err)}'
+            f'<br/>Graphs captured before the error are still shown.</div>'
+        )
     html.append(
         f'<pre style="background:#0d1117;color:#c9d1d9;padding:10px;'
         f'border-radius:4px;font-size:11px;line-height:1.4;'
@@ -364,29 +481,24 @@ def _text_panel_svg(
     return (
         f'<foreignObject x="{x0}" y="{y0}" width="{TEXT_W}" height="{BODY_H}">'
         f'<div xmlns="http://www.w3.org/1999/xhtml" '
-        f'style="width:100%;height:100%;overflow:auto;'
-        f'box-sizing:border-box;padding:0;">'
-        f'{inner}'
-        f'</div></foreignObject>'
+        f'style="width:100%;height:100%;overflow:auto;box-sizing:border-box;">'
+        f'{inner}</div></foreignObject>'
     )
 
 
-def render_test_svg(
+def _render_test_svg(
     out_path: Path,
     test_file: str, cls_name: Optional[str], func_name: str,
     src: str, cls_doc: Optional[str], func_doc: Optional[str],
-    graph: Optional[nx.Graph],
+    graphs: List[Tuple[str, nx.Graph]], exec_err: Optional[str],
 ) -> None:
-    x_graph, y_graph = 20, HEADER_H + 20
-    x_text, y_text = TEXT_X, HEADER_H + 20
     qual = f"{cls_name}.{func_name}" if cls_name else func_name
     parts = [
-        f'<?xml version="1.0" encoding="UTF-8"?>',
+        '<?xml version="1.0" encoding="UTF-8"?>',
         f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
         f'width="{CANVAS_W}" height="{CANVAS_H}" '
         f'viewBox="0 0 {CANVAS_W} {CANVAS_H}">',
         f'<rect width="{CANVAS_W}" height="{CANVAS_H}" fill="#ffffff"/>',
-        # Header.
         f'<rect x="0" y="0" width="{CANVAS_W}" height="{HEADER_H}" fill="#f6f8fa"/>',
         f'<line x1="0" y1="{HEADER_H}" x2="{CANVAS_W}" y2="{HEADER_H}" '
         f'stroke="#e1e4e8" stroke-width="1"/>',
@@ -395,69 +507,266 @@ def render_test_svg(
         f'<text x="{CANVAS_W - 20}" y="32" font-family="monospace" '
         f'font-size="12" fill="#6a737d" text-anchor="end">'
         f'tests/{test_file}.py</text>',
-        # Panels.
-        _graph_panel_svg(graph, x_graph, y_graph),
-        _text_panel_svg(test_file, cls_name, func_name, src, cls_doc, func_doc,
-                        x_text, y_text),
-        # Footer.
-        f'<line x1="0" y1="{CANVAS_H - FOOTER_H}" x2="{CANVAS_W}" y2="{CANVAS_H - FOOTER_H}" '
-        f'stroke="#e1e4e8" stroke-width="1"/>',
+        _render_gallery(graphs, 20, HEADER_H + 20, GRAPH_W, GRAPH_H),
+        _text_panel_foreign(
+            qual, f"tests/{test_file}.py::{qual}",
+            cls_doc, func_doc, src, TEXT_X, HEADER_H + 20, exec_err,
+        ),
+        f'<line x1="0" y1="{CANVAS_H - FOOTER_H}" x2="{CANVAS_W}" '
+        f'y2="{CANVAS_H - FOOTER_H}" stroke="#e1e4e8" stroke-width="1"/>',
         f'<text x="20" y="{CANVAS_H - 10}" font-family="sans-serif" '
         f'font-size="11" fill="#6a737d">'
-        f'Graph on left (best-effort extraction); docstring + test code on right. '
+        f'Graph(s) rendered from sandboxed exec of the test body. '
         f'Regenerate via `python -m tests._manual_verification`.</text>',
         '</svg>',
     ]
     out_path.write_text("\n".join(parts), encoding="utf-8")
 
 
-# ---------- index page ----------
-
-def _write_index(all_tests) -> None:
-    """Emit an index.html so the human can click through by module."""
-    by_module: Dict[str, list] = {}
-    for (mod, cls, fn, *_rest) in all_tests:
-        by_module.setdefault(mod, []).append((cls, fn))
-    html = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8"/>',
-            '<title>geg — manual test verification</title>',
-            '<style>',
-            'body{font-family:sans-serif;max-width:1000px;margin:30px auto;'
-            'padding:0 20px;color:#24292e;}',
-            'h1{border-bottom:2px solid #e1e4e8;padding-bottom:10px;}',
-            'h2{margin-top:30px;border-bottom:1px solid #e1e4e8;'
-            'padding-bottom:6px;font-size:18px;}',
-            'ul{list-style:none;padding-left:0;}',
-            'li{padding:2px 0;}',
-            'a{color:#0366d6;text-decoration:none;font-family:monospace;'
-            'font-size:13px;}',
-            'a:hover{text-decoration:underline;}',
-            '.cls{color:#6f42c1;margin-left:8px;}',
-            '</style></head><body>',
-            '<h1>geg — manual test verification</h1>',
-            f'<p>One SVG per test across the <b>{len(all_tests)}</b> '
-            f'collected tests. Click to open.</p>']
-    for mod in sorted(by_module):
-        html.append(f'<h2>{mod}</h2><ul>')
-        for cls, fn in sorted(by_module[mod], key=lambda p: (p[0] or "", p[1])):
-            label = f"{cls}.{fn}" if cls else fn
-            filename = f"{cls}_{fn}.svg" if cls else f"{fn}.svg"
-            html.append(
-                f'<li><a href="{mod}/{filename}">{label}</a></li>'
-            )
-        html.append('</ul>')
-    html.append('</body></html>')
-    (OUT_DIR / "index.html").write_text("\n".join(html), encoding="utf-8")
+# =====================================================================
+# Browseable viewer.
+# =====================================================================
 
 
-# ---------- parametrised-test expansions ----------
+def _write_viewer(entries: List[Dict]) -> None:
+    """Single-page HTML viewer: sidebar on the left, SVG in the centre,
+    prev/next navigation with keyboard shortcuts."""
+    import json
 
-def _emit_fixture_metric_cases(subdir: Path, src: str, cls_doc, func_doc) -> int:
-    """`test_fixture_metric` is parametrised over 124+ (fixture, metric,
-    expected) cases. Emit one SVG per case so the reviewer sees the
-    actual graph and the specific expected value, not just the generic
-    parametrised driver source."""
+    manifest = json.dumps(entries, ensure_ascii=False)
+
+    # Escape `</script>` in JSON embed to prevent premature termination.
+    manifest_safe = manifest.replace("</", "<\\/")
+
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>geg — manual test verification</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 Oxygen, Ubuntu, Cantarell, sans-serif; color: #24292e; }
+  #app { display: flex; height: 100vh; }
+  #sidebar {
+    width: 340px; flex: 0 0 340px; background: #fafbfc;
+    border-right: 1px solid #e1e4e8; overflow-y: auto;
+    font-size: 13px;
+  }
+  #sidebar header {
+    padding: 14px 16px; border-bottom: 1px solid #e1e4e8;
+    background: #ffffff; position: sticky; top: 0;
+  }
+  #sidebar h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  #sidebar .meta { margin-top: 4px; color: #6a737d; font-size: 11px;
+                   font-family: monospace; }
+  #filter {
+    width: 100%; margin-top: 8px; padding: 6px 8px;
+    border: 1px solid #d1d5da; border-radius: 3px; font-size: 12px;
+    font-family: inherit;
+  }
+  #sidebar .module {
+    font-weight: 600; color: #24292e; padding: 10px 16px 4px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #6a737d;
+  }
+  #sidebar .cls {
+    padding: 4px 16px 4px 22px; font-size: 11px; color: #6f42c1;
+    font-family: monospace; text-transform: none;
+  }
+  #sidebar a {
+    display: block; padding: 3px 16px 3px 28px;
+    color: #0366d6; text-decoration: none; font-family: monospace;
+    font-size: 12px; border-left: 3px solid transparent;
+  }
+  #sidebar a.no-graph { color: #959da5; }
+  #sidebar a:hover { background: #eef2f6; }
+  #sidebar a.active {
+    background: #eef2f6; border-left-color: #0366d6;
+    color: #0366d6; font-weight: 600;
+  }
+  #main { flex: 1 1 auto; display: flex; flex-direction: column; }
+  #toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; background: #f6f8fa;
+    border-bottom: 1px solid #e1e4e8; font-size: 13px;
+  }
+  #toolbar button {
+    background: #ffffff; border: 1px solid #d1d5da; border-radius: 3px;
+    padding: 4px 10px; cursor: pointer; font-family: inherit;
+    font-size: 12px; color: #24292e;
+  }
+  #toolbar button:hover { background: #eaecef; }
+  #toolbar button:disabled { color: #959da5; cursor: not-allowed; }
+  #toolbar .label { color: #6a737d; }
+  #toolbar .pos { margin-left: auto; color: #6a737d; font-family: monospace; }
+  #viewer {
+    flex: 1 1 auto; overflow: auto; padding: 18px;
+    background: #eef2f6;
+    display: flex; justify-content: center; align-items: flex-start;
+  }
+  #viewer object {
+    background: #ffffff; border: 1px solid #d1d5da; border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(27,31,35,0.06);
+  }
+  kbd {
+    display: inline-block; padding: 1px 5px; font-size: 10px;
+    font-family: monospace; background: #f6f8fa; border: 1px solid #d1d5da;
+    border-radius: 3px; color: #24292e;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="sidebar">
+    <header>
+      <h1>manual test verification</h1>
+      <div class="meta" id="count"></div>
+      <input id="filter" type="text" placeholder="filter tests (regex)…" autocomplete="off"/>
+    </header>
+    <div id="list"></div>
+  </nav>
+  <section id="main">
+    <div id="toolbar">
+      <button id="prev">◀ Prev</button>
+      <button id="next">Next ▶</button>
+      <span class="label">
+        <kbd>←</kbd>/<kbd>→</kbd> prev/next &nbsp; <kbd>/</kbd> filter
+      </span>
+      <span class="pos" id="pos"></span>
+    </div>
+    <div id="viewer">
+      <object id="frame" type="image/svg+xml" width="1400" height="800"></object>
+    </div>
+  </section>
+</div>
+<script>
+const ENTRIES = __MANIFEST__;
+const list = document.getElementById("list");
+const filter = document.getElementById("filter");
+const frame = document.getElementById("frame");
+const prevBtn = document.getElementById("prev");
+const nextBtn = document.getElementById("next");
+const pos = document.getElementById("pos");
+const count = document.getElementById("count");
+
+count.textContent = ENTRIES.length + " tests · " +
+  ENTRIES.filter(e => e.has_graph).length + " with graphs";
+
+let filtered = ENTRIES.slice();
+let cursor = 0;
+
+function render() {
+  list.innerHTML = "";
+  let lastModule = null;
+  let lastClass = null;
+  filtered.forEach((e, i) => {
+    if (e.module !== lastModule) {
+      const h = document.createElement("div");
+      h.className = "module";
+      h.textContent = e.module;
+      list.appendChild(h);
+      lastModule = e.module;
+      lastClass = null;
+    }
+    if (e.cls && e.cls !== lastClass) {
+      const h = document.createElement("div");
+      h.className = "cls";
+      h.textContent = e.cls;
+      list.appendChild(h);
+      lastClass = e.cls;
+    }
+    const a = document.createElement("a");
+    a.href = "#" + e.key;
+    a.textContent = e.func;
+    if (!e.has_graph) a.className = "no-graph";
+    a.dataset.idx = i;
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      go(i);
+    });
+    list.appendChild(a);
+  });
+  show();
+}
+
+function show() {
+  filtered.forEach((e, i) => {
+    const a = document.querySelector(`#list a[data-idx="${i}"]`);
+    if (a) a.classList.toggle("active", i === cursor);
+  });
+  const active = filtered[cursor];
+  if (!active) return;
+  frame.data = active.path;
+  history.replaceState(null, "", "#" + active.key);
+  pos.textContent = (cursor + 1) + " / " + filtered.length;
+  prevBtn.disabled = cursor === 0;
+  nextBtn.disabled = cursor === filtered.length - 1;
+  const activeElem = document.querySelector(`#list a.active`);
+  if (activeElem) activeElem.scrollIntoView({ block: "nearest" });
+}
+
+function go(i) {
+  cursor = Math.max(0, Math.min(filtered.length - 1, i));
+  show();
+}
+
+prevBtn.addEventListener("click", () => go(cursor - 1));
+nextBtn.addEventListener("click", () => go(cursor + 1));
+
+document.addEventListener("keydown", (ev) => {
+  if (document.activeElement === filter) {
+    if (ev.key === "Escape") { filter.blur(); }
+    return;
+  }
+  if (ev.key === "ArrowLeft")  { ev.preventDefault(); go(cursor - 1); }
+  if (ev.key === "ArrowRight") { ev.preventDefault(); go(cursor + 1); }
+  if (ev.key === "/")          { ev.preventDefault(); filter.focus(); filter.select(); }
+});
+
+filter.addEventListener("input", () => {
+  const q = filter.value.trim();
+  if (!q) {
+    filtered = ENTRIES.slice();
+  } else {
+    let re;
+    try { re = new RegExp(q, "i"); }
+    catch { re = new RegExp(q.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i"); }
+    filtered = ENTRIES.filter(e =>
+      re.test(e.func) || re.test(e.cls || "") || re.test(e.module)
+    );
+  }
+  cursor = 0;
+  render();
+});
+
+// Restore from URL hash on load.
+const initialHash = decodeURIComponent(location.hash.replace(/^#/, ""));
+if (initialHash) {
+  const i = ENTRIES.findIndex(e => e.key === initialHash);
+  if (i >= 0) cursor = i;
+}
+render();
+</script>
+</body>
+</html>
+"""
+    html = html.replace("__MANIFEST__", manifest_safe)
+    (OUT_DIR / "viewer.html").write_text(html, encoding="utf-8")
+
+
+# =====================================================================
+# Parametrised-test expansions.
+# =====================================================================
+
+
+def _emit_fixture_metric_cases(subdir: Path, src: str) -> List[Dict]:
+    """`test_fixture_metric` is parametrised over ~130 (fixture, metric,
+    expected) tuples. Emit one SVG per case so the reviewer sees the
+    actual graph and expected value, not just the driver loop."""
     from tests.fixtures._builder import all_fixtures
-    count = 0
+    entries: List[Dict] = []
     for fx in all_fixtures().values():
         G = fx.build()
         for metric_name, expected in fx.expected.items():
@@ -465,124 +774,161 @@ def _emit_fixture_metric_cases(subdir: Path, src: str, cls_doc, func_doc) -> int
                 continue
             case_src = (
                 f"# Parametrised case of test_fixture_metric:\n"
-                f"# fixture: {fx.name}\n"
-                f"# metric:  {metric_name}\n"
-                f"# expected: {expected}\n"
-                f"# tolerance: {fx.tol}\n"
-                f"#\n"
-                f"# Shared driver:\n{src}"
+                f"#   fixture  = {fx.name}\n"
+                f"#   metric   = {metric_name}\n"
+                f"#   expected = {expected}\n"
+                f"#   tolerance = {fx.tol}\n\n"
+                f"# Shared driver body:\n"
+                f"{src}"
             )
             case_doc = (
-                f"Case {fx.name} × {metric_name}:\n"
-                f"  {metric_name}({fx.name}) should equal {expected} "
+                f"Case {fx.name} × {metric_name}.\n\n"
+                f"Asserts: {metric_name}({fx.name}) == {expected} "
                 f"(abs/rel tol = {fx.tol}).\n\n"
                 f"Fixture description:\n  {fx.description}"
             )
             filename = f"test_fixture_metric__{fx.name}__{metric_name}.svg"
             out_path = subdir / filename
-            render_test_svg(
+            _render_test_svg(
                 out_path,
-                "test_fixtures", None, f"test_fixture_metric[{fx.name}.{metric_name}]",
-                case_src, cls_doc, case_doc, G,
+                "test_fixtures", None,
+                f"test_fixture_metric[{fx.name}.{metric_name}]",
+                case_src, None, case_doc,
+                [(fx.name, G)], None,
             )
-            count += 1
-    return count
+            entries.append({
+                "module": "test_fixtures",
+                "cls": None,
+                "func": f"test_fixture_metric[{fx.name}.{metric_name}]",
+                "key": f"test_fixtures/test_fixture_metric__{fx.name}__{metric_name}",
+                "path": f"test_fixtures/{filename}",
+                "has_graph": True,
+            })
+    return entries
 
 
-def _emit_parametrized_fixture_tests(subdir: Path, func_name: str,
-                                      src: str, cls_doc, func_doc,
-                                      cls_name: Optional[str]) -> int:
-    """For parametrised tests that iterate over fixture names (e.g.
-    TestTVCGReproduction.test_line_only_fixtures_adaptive_matches_fixed_N),
-    emit one SVG per fixture with the actual graph embedded."""
-    # Look for @pytest.mark.parametrize("fx_name", [...])
+def _parametrised_fixture_names(src: str) -> List[str]:
+    """Return fixture names if the test is parametrised over `fx_name`
+    or similar; else empty list."""
     m = re.search(
-        r'@pytest\.mark\.parametrize\(\s*["\'](fx_name|name)["\']\s*,\s*\[([^\]]+)\]',
+        r'@pytest\.mark\.parametrize\(\s*["\'](fx_name|name|fixture_name)["\']'
+        r'\s*,\s*\[([^\]]+)\]',
         src,
     )
     if not m:
-        return 0
-    raw_items = m.group(2)
-    fixture_names = re.findall(r'["\']([\w_]+)["\']', raw_items)
-    if not fixture_names:
-        return 0
+        return []
+    items = m.group(2)
+    return re.findall(r'["\']([\w_]+)["\']', items)
+
+
+def _emit_parametrised_fixture_cases(
+    subdir: Path, test_file: str, cls_name: Optional[str], func_name: str,
+    src: str, cls_doc: Optional[str], func_doc: Optional[str],
+    fixture_names: List[str],
+) -> List[Dict]:
+    """For parametrised tests keyed by fixture name, one SVG per fixture."""
     try:
         from tests.fixtures._builder import all_fixtures
         fixtures = all_fixtures()
     except ImportError:
-        return 0
-    count = 0
+        return []
+    entries: List[Dict] = []
     for fx_name in fixture_names:
         if fx_name not in fixtures:
             continue
         G = fixtures[fx_name].build()
         case_src = f"# Parametrised case: fx_name = {fx_name!r}\n\n{src}"
-        case_doc = (
+        extended_doc = (
             (func_doc.strip() + "\n\n") if func_doc else ""
         ) + f"Current fixture: {fx_name}"
-        label = f"{cls_name}_{func_name}[{fx_name}]" if cls_name else f"{func_name}[{fx_name}]"
-        filename = f"{label}.svg"
+        label_base = f"{cls_name}_{func_name}" if cls_name else func_name
+        filename = f"{label_base}__{fx_name}.svg"
         out_path = subdir / filename
-        render_test_svg(
-            out_path,
-            "test_paths" if cls_name and cls_name.startswith("TestTVCG") else subdir.name,
-            cls_name, f"{func_name}[{fx_name}]",
-            case_src, cls_doc, case_doc, G,
+        _render_test_svg(
+            out_path, test_file, cls_name,
+            f"{func_name}[{fx_name}]",
+            case_src, cls_doc, extended_doc,
+            [(fx_name, G)], None,
         )
-        count += 1
-    return count
+        qual = f"{cls_name}.{func_name}[{fx_name}]" if cls_name else f"{func_name}[{fx_name}]"
+        entries.append({
+            "module": test_file,
+            "cls": cls_name,
+            "func": f"{func_name}[{fx_name}]",
+            "key": f"{test_file}/{label_base}__{fx_name}",
+            "path": f"{test_file}/{filename}",
+            "has_graph": True,
+        })
+    return entries
 
 
-# ---------- entry point ----------
+# =====================================================================
+# Entry point.
+# =====================================================================
+
 
 def main() -> None:
     OUT_DIR.mkdir(exist_ok=True)
-    all_tests = []
-    extracted, fallback, expanded = 0, 0, 0
+    entries: List[Dict] = []
+    n_graphs_extracted = 0
+    n_text_only = 0
+    n_parametrised = 0
+
     for info in _iter_tests():
         test_file, cls_name, func_name, src, _mod_doc, cls_doc, func_doc = info
         subdir = OUT_DIR / test_file
         subdir.mkdir(exist_ok=True)
 
-        # Special-case parametrised tests that iterate over fixtures so
-        # each case gets its own SVG with the actual graph.
+        # Special case: test_fixtures.test_fixture_metric → ~130 cases.
         if test_file == "test_fixtures" and func_name == "test_fixture_metric":
-            n = _emit_fixture_metric_cases(subdir, src, cls_doc, func_doc)
-            expanded += n
-            all_tests.append(info)  # keep one row in the index for the driver
+            expanded = _emit_fixture_metric_cases(subdir, src)
+            entries.extend(expanded)
+            n_parametrised += len(expanded)
             continue
-        if "@pytest.mark.parametrize" in src and re.search(
-            r'parametrize\(\s*["\'](fx_name|name)["\']', src,
-        ):
-            n = _emit_parametrized_fixture_tests(
-                subdir, func_name, src, cls_doc, func_doc, cls_name,
+
+        # Parametrised over a fixture-name list?
+        fixture_names = _parametrised_fixture_names(src)
+        if fixture_names:
+            expanded = _emit_parametrised_fixture_cases(
+                subdir, test_file, cls_name, func_name,
+                src, cls_doc, func_doc, fixture_names,
             )
-            if n > 0:
-                expanded += n
-                all_tests.append(info)
+            if expanded:
+                entries.extend(expanded)
+                n_parametrised += len(expanded)
                 continue
-            # Fall through — parametrisation wasn't fixture-driven.
+
+        # Default: sandboxed exec to capture graphs.
+        graphs, err = _exec_and_capture_graphs(test_file, cls_name, src)
+        if graphs:
+            n_graphs_extracted += 1
+        else:
+            n_text_only += 1
 
         filename = f"{cls_name}_{func_name}.svg" if cls_name else f"{func_name}.svg"
         out_path = subdir / filename
-        graph = try_extract_graph(src)
-        if graph is not None:
-            extracted += 1
-        else:
-            fallback += 1
-        render_test_svg(
-            out_path,
-            test_file, cls_name, func_name, src, cls_doc, func_doc, graph,
+        _render_test_svg(
+            out_path, test_file, cls_name, func_name,
+            src, cls_doc, func_doc, graphs, err,
         )
-        all_tests.append(info)
-    _write_index(all_tests)
-    total_svgs = extracted + fallback + expanded
+        qual = f"{cls_name}.{func_name}" if cls_name else func_name
+        entries.append({
+            "module": test_file,
+            "cls": cls_name,
+            "func": func_name,
+            "key": f"{test_file}/{(cls_name + '_' + func_name) if cls_name else func_name}",
+            "path": f"{test_file}/{filename}",
+            "has_graph": bool(graphs),
+        })
+
+    _write_viewer(entries)
+    total = len(entries)
     print(
-        f"Wrote {total_svgs} SVGs ({len(all_tests)} test functions) to {OUT_DIR}:\n"
-        f"  graph extracted inline:       {extracted}\n"
-        f"  parametrised-case expansions: {expanded}\n"
-        f"  text-only (no graph):         {fallback}\n"
-        f"Open `manual_verification/index.html` to browse."
+        f"Wrote {total} SVGs + viewer.html to {OUT_DIR}:\n"
+        f"  graph captured via sandbox exec: {n_graphs_extracted}\n"
+        f"  parametrised-case expansions:    {n_parametrised}\n"
+        f"  text-only (no graph built):      {n_text_only}\n"
+        f"Open `{OUT_DIR / 'viewer.html'}` to browse."
     )
 
 
