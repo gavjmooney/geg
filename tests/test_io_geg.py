@@ -248,3 +248,48 @@ class TestGraphTypes:
         p = tmp_path / "noloop.geg"
         p.write_text(json.dumps(data))
         assert has_self_loops_file(str(p)) is False
+
+
+# ---------- explicit-node-radius fixture ----------
+
+RADIUS_FIXTURE = Path(__file__).parent / "fixtures" / "io" / "node_with_radius.geg"
+
+
+class TestExplicitRadiusFixture:
+    """Pins the write-side fallback added in v0.2.0: when a node has an
+    explicit `radius` attribute but no width/height, the GML / GraphML
+    writers emit `width = height = 2 * radius`. Guards against regressions
+    of the earlier behaviour (always 30.0)."""
+
+    def test_reads_radius_attribute(self):
+        G = read_geg(str(RADIUS_FIXTURE))
+        assert G.nodes["a"]["radius"] == 5.0
+        assert G.nodes["b"]["radius"] == 10.0
+        assert G.nodes["c"]["radius"] == 15.0
+
+    def test_gml_writer_uses_2x_radius_when_no_width_height(self, tmp_path):
+        from geg.io.gml import write_gml
+        G = read_geg(str(RADIUS_FIXTURE))
+        out = tmp_path / "radius.gml"
+        write_gml(G, str(out))
+        text = out.read_text()
+        # Each node should carry w and h equal to 2 * radius.
+        assert "w 10.0\n      h 10.0" in text  # a: r=5
+        assert "w 20.0\n      h 20.0" in text  # b: r=10
+        assert "w 30.0\n      h 30.0" in text  # c: r=15
+
+    def test_graphml_writer_uses_2x_radius_when_no_width_height(self, tmp_path):
+        from geg.io.graphml import write_graphml
+        G = read_geg(str(RADIUS_FIXTURE))
+        out = tmp_path / "radius.graphml"
+        write_graphml(G, str(out))
+        text = out.read_text()
+        # Each geometry element should carry the 2*radius dimension.
+        assert 'width="10.0"' in text and 'height="10.0"' in text
+        assert 'width="20.0"' in text and 'height="20.0"' in text
+        assert 'width="30.0"' in text and 'height="30.0"' in text
+
+    def test_explicit_width_still_wins_over_radius(self, tmp_path):
+        from geg.io.gml import _node_wh
+        # Explicit width/height take priority over radius.
+        assert _node_wh({"radius": 5.0, "width": 99.0, "height": 88.0}, 4.0) == (99.0, 88.0)

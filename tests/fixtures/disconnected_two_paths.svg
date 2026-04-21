@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="800.0" height="100.0" viewBox="-50.0 -50.0 800.0 100.0">
+  <g class="grid">
+    <line stroke-width="0.5" x1="0.0" y1="-50.0" x2="0.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="140.0" y1="-50.0" x2="140.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="280.0" y1="-50.0" x2="280.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="420.0" y1="-50.0" x2="420.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="560.0" y1="-50.0" x2="560.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="700.0" y1="-50.0" x2="700.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="-50.0" y1="0.0" x2="750.0" y2="0.0" stroke="#ddd"/>
+  </g>
+  <path stroke-width="2.0" d="M0,0 L140,0" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M140,0 L280,0" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M560,0 L700,0" fill="none" stroke="black"/>
+  <ellipse stroke-width="2.0" cx="0.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="a"/>
+  <ellipse stroke-width="2.0" cx="140.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="b"/>
+  <ellipse stroke-width="2.0" cx="280.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="c"/>
+  <ellipse stroke-width="2.0" cx="560.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="d"/>
+  <ellipse stroke-width="2.0" cx="700.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="e"/>
+</svg>

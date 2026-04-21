@@ -291,6 +291,71 @@ class TestWriteGraphMLYedCornerAnchor:
             assert G2.nodes[n]["y"] == pytest.approx(G.nodes[n]["y"])
 
 
+YED_AUTHORED = Path(__file__).parent / "fixtures" / "io" / "yed_authored.graphml"
+
+
+class TestYedAuthoredFixture:
+    """End-to-end read / round-trip on a hand-written yEd-authored GraphML
+    with 5 nodes, 4 square-cycle edges, one colour variant, and one edge
+    with L-bend points. Pins behaviours that `TestYedCornerAnchor` only
+    covers via inline XML strings."""
+
+    def test_reads_node_centres_after_corner_shift(self):
+        G = read_graphml(str(YED_AUTHORED))
+        # yEd stores top-left; reader auto-detects (comment + xmlns:yed)
+        # and shifts by (width/2, height/2) = (15, 15) for all 30x30 nodes.
+        expected_centres = {
+            "n0": (0.0, 0.0),
+            "n1": (150.0, 0.0),
+            "n2": (150.0, 150.0),
+            "n3": (0.0, 150.0),
+            "n4": (300.0, 75.0),
+        }
+        for n, (x, y) in expected_centres.items():
+            assert G.nodes[n]["x"] == pytest.approx(x)
+            assert G.nodes[n]["y"] == pytest.approx(y)
+
+    def test_reads_bent_edge(self):
+        G = read_graphml(str(YED_AUTHORED))
+        # Edge n1-n4 has L-bend via (225, 0) and (225, 75).
+        bends = G.edges["n1", "n4"]["bends"]
+        assert bends == [(225.0, 0.0), (225.0, 75.0)]
+        assert G.edges["n1", "n4"]["polyline"] is True
+
+    def test_reads_node_and_edge_colours(self):
+        G = read_graphml(str(YED_AUTHORED))
+        assert G.nodes["n4"]["colour"] == "#CC99FF"
+        assert G.nodes["n4"]["shape"] == "rectangle"
+        assert G.edges["n1", "n4"]["colour"] == "#0000FF"
+
+    def test_round_trip_preserves_centres_and_bends(self, tmp_path):
+        """Read a yEd-authored file, write it back without the yed flag,
+        and re-read: centres and bends must survive end-to-end."""
+        G = read_graphml(str(YED_AUTHORED))
+        out = tmp_path / "rt.graphml"
+        write_graphml(G, str(out))
+        G2 = read_graphml(str(out))
+        for n in G.nodes:
+            assert G2.nodes[n]["x"] == pytest.approx(G.nodes[n]["x"])
+            assert G2.nodes[n]["y"] == pytest.approx(G.nodes[n]["y"])
+        assert G2.edges["n1", "n4"]["bends"] == G.edges["n1", "n4"]["bends"]
+
+    def test_graphml_to_geg_end_to_end(self, tmp_path):
+        from geg import graphml_to_geg, read_geg
+        out = tmp_path / "yed.geg"
+        graphml_to_geg(str(YED_AUTHORED), str(out))
+        G = read_geg(str(out))
+        # Five nodes, five edges survived.
+        assert G.number_of_nodes() == 5
+        assert G.number_of_edges() == 5
+        # L-bend encoded as M/L polyline in GEG path.
+        path = G.edges["n1", "n4"]["path"]
+        assert path.startswith("M150.0,0.0")
+        assert "L225.0,0.0" in path
+        assert "L225.0,75.0" in path
+        assert path.rstrip().endswith("L300.0,75.0")
+
+
 class TestWriteGraphMLMultigraph:
     def test_handles_multigraph(self, tmp_path):
         """write_graphml used to crash on MultiGraphs because the legacy

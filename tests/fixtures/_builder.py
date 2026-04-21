@@ -418,6 +418,112 @@ register(Fixture(
 ))
 
 
+def _build_disconnected_two_paths() -> nx.Graph:
+    # Two disjoint components: P3 (a-b-c) at x=0,1,2 and P2 (d-e) at x=4,5.
+    G = nx.Graph()
+    for n, x in [("a", 0), ("b", 1), ("c", 2), ("d", 4), ("e", 5)]:
+        _add_node(G, n, x, 0)
+    for u, v in [("a", "b"), ("b", "c"), ("d", "e")]:
+        _add_edge_straight(G, u, v)
+    return G
+
+
+register(Fixture(
+    name="disconnected_two_paths",
+    description="Two collinear path components: P3 a-b-c at x=0,1,2 and P2 d-e at x=4,5. Exercises per-component weighted aggregation in KSM / NP (DQ-1).",
+    build=_build_disconnected_two_paths,
+    expected={
+        # h=0 → degenerate → 1 per spec.
+        "aspect_ratio": 1.0,
+        # Only eligible node for min-angle AR is 'b' (degree 2, 180° gap) → 1.
+        # All others are degree 1 and excluded.
+        "angular_resolution_min_angle": 1.0,
+        "angular_resolution_avg_angle": 1.0,
+        "crossing_angle": 1.0,
+        "edge_crossings": 1.0,  # no crossings.
+        "edge_orthogonality": 1.0,  # all horizontal.
+        "edge_length_deviation": 1.0,  # all unit length.
+        "gabriel_ratio_edges": 1.0,
+        # Component-weighted KSM: each component is a straight path with
+        # d_ij = x_ij, so KSM = 1 per component; weighted sum by node count
+        # is also 1 (paper §3.3 disconnected rule, mirrored by DQ-1).
+        "kruskal_stress": 1.0,
+        # NR is global: min pair = 1, max pair = |a − e| = 5 → 1/5.
+        "node_resolution": 1.0 / 5.0,
+    },
+))
+
+
+def _build_bezier_curve() -> nx.Graph:
+    # Single quadratic Bézier arc from a=(0,0) to b=(4,0), control (2,2);
+    # curve peaks at (2,1) at t=0.5 (parabolic arch). Exercises DQ-2 —
+    # the metric set's behaviour on a curved edge.
+    G = nx.Graph()
+    _add_node(G, "a", 0, 0)
+    _add_node(G, "b", 4, 0)
+    G.add_edge("a", "b", polyline=True, path="M0,0 Q2,2 4,0")
+    return G
+
+
+register(Fixture(
+    name="bezier_curve",
+    description="Single quadratic Bézier edge from (0,0) to (4,0) with control (2,2); parabolic arch peaking at (2,1). Forces DQ-2 into concrete expected values for curve sampling.",
+    build=_build_bezier_curve,
+    expected={
+        # Only one edge → ELD vacuously 1.
+        "edge_length_deviation": 1.0,
+        # No crossings possible with a single edge.
+        "edge_crossings": 1.0,
+        "crossing_angle": 1.0,
+        # Both nodes degree 1 → AR is vacuous → 1.
+        "angular_resolution_min_angle": 1.0,
+        "angular_resolution_avg_angle": 1.0,
+    },
+))
+
+
+def _build_k5_crossed() -> nx.Graph:
+    # Regular pentagon (unit circumradius) with all 10 edges = K5. The 5
+    # chords (pentagram) produce exactly 5 crossings at the interior star
+    # points; no side crosses any chord. The crossing count 5 matches the
+    # drawing's convex-position crossing count (not cr(K5) = 1).
+    G = nx.Graph()
+    names = ["v0", "v1", "v2", "v3", "v4"]
+    for i, n in enumerate(names):
+        theta = math.radians(-90 + i * 72)
+        _add_node(G, n, math.cos(theta), math.sin(theta))
+    # All C(5,2) = 10 pairs → complete graph on 5 vertices.
+    for i in range(5):
+        for j in range(i + 1, 5):
+            _add_edge_straight(G, names[i], names[j])
+    return G
+
+
+register(Fixture(
+    name="k5_crossed",
+    description="K5 drawn on a regular unit-circumradius pentagon; the 5 chords form a pentagram with exactly 5 interior crossings. Exercises EC with a non-trivial crossing count.",
+    build=_build_k5_crossed,
+    expected={
+        # m=10, c_all = C(10,2) = 45, c_deg = 5 * C(4,2) = 30, c_max = 15.
+        # c = 5 crossings (pentagram). EC = 1 - 5/15 = 2/3.
+        "edge_crossings": 2.0 / 3.0,
+        # NR: min pair = pentagon side = 2 sin(π/5); max pair = diagonal
+        # = 2 sin(2π/5). Ratio = sin(π/5) / sin(2π/5) = 1/φ (golden ratio).
+        "node_resolution": math.sin(math.pi / 5) / math.sin(2 * math.pi / 5),
+        # All 10 edges drawn; ELD depends on side vs. chord lengths.
+        # Sides (5): length 2 sin(π/5). Chords (5): length 2 sin(2π/5).
+        # ideal = (5·s + 5·c) / 10 = (s + c) / 2. dev per edge = |L - ideal|
+        # = (c - s)/2. rel dev = (c - s) / (s + c) for every edge.
+        # avg rel dev = (c - s) / (s + c). ELD = 1 / (1 + (c-s)/(s+c))
+        # = (s + c) / (2c) = (sin(π/5) + sin(2π/5)) / (2 sin(2π/5)).
+        "edge_length_deviation": (
+            (math.sin(math.pi / 5) + math.sin(2 * math.pi / 5))
+            / (2 * math.sin(2 * math.pi / 5))
+        ),
+    },
+))
+
+
 # ---------- Post-registration: metrics that hold 1.0 across every fixture ----------
 # Every Phase-3 fixture is constructed so that no non-endpoint node is close
 # enough to any edge to trigger a node-edge-occlusion penalty at the default

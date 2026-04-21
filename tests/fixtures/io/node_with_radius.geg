@@ -1,0 +1,16 @@
+{
+    "graph": {
+        "directed": false,
+        "description": "Three-node drawing with explicit per-node radius attributes. Used to pin the writer fallback 'radius -> 2*radius' for formats that store width/height (GML, GraphML)."
+    },
+    "nodes": [
+        {"id": "a", "x": 0.0, "y": 0.0, "position": [0.0, 0.0], "radius": 5.0},
+        {"id": "b", "x": 100.0, "y": 0.0, "position": [100.0, 0.0], "radius": 10.0},
+        {"id": "c", "x": 50.0, "y": 80.0, "position": [50.0, 80.0], "radius": 15.0}
+    ],
+    "edges": [
+        {"id": "a-b", "source": "a", "target": "b", "path": "M0.0,0.0 L100.0,0.0", "polyline": false},
+        {"id": "b-c", "source": "b", "target": "c", "path": "M100.0,0.0 L50.0,80.0", "polyline": false},
+        {"id": "c-a", "source": "c", "target": "a", "path": "M50.0,80.0 L0.0,0.0", "polyline": false}
+    ]
+}
