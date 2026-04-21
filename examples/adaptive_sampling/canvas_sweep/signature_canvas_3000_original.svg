@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="3000.000" height="1500.000" viewBox="0 0 3000.000 1500.000">
+  <text x="10" y="87.75" font-family="monospace" font-size="67.50" fill="#999999">ORIGINAL — canvas 3000px</text>
+  <path d="M 750.0,750.0 L 900.0,750.0 Q 975.0,525.0 1050.0,750.0 L 1200.0,750.0 C 1250.0,475.0 1400.0,1025.0 1450.0,750.0 L 1600.0,750.0 Q 1675.0,850.0 1750.0,750.0 L 1900.0,750.0 C 1950.0,660.0 2050.0,840.0 2100.0,750.0 L 2250.0,750.0" fill="none" stroke="#1f77b4" stroke-width="14.400"/>
+  <circle cx="750.000" cy="750.000" r="36.000" fill="#ffffff" stroke="#000000" stroke-width="9.000"/>
+  <circle cx="2250.000" cy="750.000" r="36.000" fill="#ffffff" stroke="#000000" stroke-width="9.000"/>
+</svg>

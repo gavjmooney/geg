@@ -369,6 +369,22 @@ def _scale_signature(k: float) -> nx.Graph:
 _RENDER_CANVAS = 600.0  # pixel width the sampled SVGs always render at
 
 
+def _display_transform_to(G: nx.Graph, canvas_width: float):
+    """Like `_display_transform` but targets an arbitrary pixel canvas
+    width. Used by the canvas_sweep to render the same drawing at a
+    range of physical pixel sizes."""
+    box = _layout(G)
+    extent = max(box["width"], box["height"])
+    if extent <= 0:
+        return 1.0, 0.0, 0.0, canvas_width, canvas_width
+    s = canvas_width / extent
+    ox = -box["min_x"] * s
+    oy = -box["min_y"] * s
+    disp_w = box["width"] * s
+    disp_h = box["height"] * s
+    return s, ox, oy, disp_w, disp_h
+
+
 def _display_transform(G: nx.Graph):
     """Return (scale, offset_x, offset_y) mapping graph coords to a
     fixed pixel range `[0, _RENDER_CANVAS]` × `[0, h]`.
@@ -538,6 +554,157 @@ def _render_original_with_display_transform(
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _render_sampled_at_canvas(
+    G: nx.Graph, path: Path, flatness_tol: float,
+    canvas_width: float, caption: str,
+) -> None:
+    """Render the sampled polyline to an SVG whose width/height attributes
+    are exactly `canvas_width` pixels (height scales with aspect ratio).
+    Node radius, stroke width, and dot size are all computed in pixel
+    space so proportions stay consistent across the sweep — the only
+    thing that changes between sizes is the physical render size."""
+    s, ox, oy, disp_w, disp_h = _display_transform_to(G, canvas_width)
+
+    def tx(x, y):
+        return x * s + ox, y * s + oy
+
+    r = 0.012 * max(disp_w, disp_h)
+    stroke_w = r * 0.4
+    dot_r = r * 0.35
+
+    svg_open = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        f'width="{disp_w:.3f}" height="{disp_h:.3f}" '
+        f'viewBox="0 0 {disp_w:.3f} {disp_h:.3f}">\n'
+    )
+    lines = [svg_open]
+
+    total_samples = 0
+    rendered_edges = []
+    for u, v, attrs in G.edges(data=True):
+        poly = edge_polyline(
+            source=(G.nodes[u]["x"], G.nodes[u]["y"]),
+            target=(G.nodes[v]["x"], G.nodes[v]["y"]),
+            path_str=attrs["path"],
+            flatness_tol=flatness_tol,
+        )
+        total_samples += len(poly)
+        rendered_edges.append((u, v, [tx(x, y) for x, y in poly]))
+
+    fs = disp_h * 0.045
+    lines.append(
+        f'  <text x="10" y="{fs * 1.3:.2f}" font-family="monospace" '
+        f'font-size="{fs:.2f}" fill="#555555">{caption}</text>\n'
+    )
+
+    for _, _, poly in rendered_edges:
+        d = "M" + " L".join(f"{x:.3f},{y:.3f}" for x, y in poly)
+        lines.append(
+            f'  <path d="{d}" fill="none" stroke="#555555" '
+            f'stroke-width="{stroke_w:.3f}"/>\n'
+        )
+    for _, _, poly in rendered_edges:
+        for x, y in poly[1:-1]:
+            lines.append(
+                f'  <circle cx="{x:.3f}" cy="{y:.3f}" r="{dot_r:.3f}" '
+                f'fill="#e74c3c" stroke="none"/>\n'
+            )
+    for n, attrs in G.nodes(data=True):
+        nx_, ny_ = tx(attrs["x"], attrs["y"])
+        lines.append(
+            f'  <circle cx="{nx_:.3f}" cy="{ny_:.3f}" r="{r:.3f}" '
+            f'fill="#ffffff" stroke="#000000" '
+            f'stroke-width="{r * 0.25:.3f}"/>\n'
+        )
+    lines.append("</svg>\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def _render_original_at_canvas(
+    G: nx.Graph, path: Path, canvas_width: float, caption: str,
+) -> None:
+    """Render the true SVG path at the given pixel canvas width."""
+    import svgpathtools
+
+    s, ox, oy, disp_w, disp_h = _display_transform_to(G, canvas_width)
+    r = 0.012 * max(disp_w, disp_h)
+    stroke_w = r * 0.4
+
+    def rewrite_path(d_str: str) -> str:
+        p = svgpathtools.parse_path(d_str)
+        for seg in p:
+            for attr in ("start", "control", "control1", "control2", "end"):
+                if hasattr(seg, attr):
+                    v = getattr(seg, attr)
+                    setattr(seg, attr, complex(v.real * s + ox, v.imag * s + oy))
+        return p.d()
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>\n',
+        f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        f'width="{disp_w:.3f}" height="{disp_h:.3f}" '
+        f'viewBox="0 0 {disp_w:.3f} {disp_h:.3f}">\n',
+    ]
+    fs = disp_h * 0.045
+    lines.append(
+        f'  <text x="10" y="{fs * 1.3:.2f}" font-family="monospace" '
+        f'font-size="{fs:.2f}" fill="#999999">{caption}</text>\n'
+    )
+    for _, _, attrs in G.edges(data=True):
+        d = rewrite_path(attrs["path"])
+        lines.append(
+            f'  <path d="{d}" fill="none" stroke="#1f77b4" '
+            f'stroke-width="{stroke_w:.3f}"/>\n'
+        )
+    for n, attrs in G.nodes(data=True):
+        nx_ = attrs["x"] * s + ox
+        ny_ = attrs["y"] * s + oy
+        lines.append(
+            f'  <circle cx="{nx_:.3f}" cy="{ny_:.3f}" r="{r:.3f}" '
+            f'fill="#ffffff" stroke="#000000" '
+            f'stroke-width="{r * 0.25:.3f}"/>\n'
+        )
+    lines.append("</svg>\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def generate_canvas_sweep() -> None:
+    """Render the signature drawing at a range of pixel canvas widths
+    (300 .. 3000 px) — same geometry, same adaptive sampling, just
+    different physical render sizes. Manual-inspection test: at higher
+    magnification the polyline should still look smooth (no visible
+    kinks) because the adaptive sampler's flatness tolerance is relative
+    to the graph-coord diagonal, not to pixels.
+    """
+    sweep_dir = OUT_DIR / "canvas_sweep"
+    sweep_dir.mkdir(exist_ok=True)
+    widths = [300, 600, 1200, 2400, 3000]
+    G = build_signature()
+    tol = _flatness_tol(G)
+    print("  canvas_sweep/ ...")
+    for w in widths:
+        # Total samples is independent of canvas size; compute once.
+        poly_pts = sum(
+            len(edge_polyline(
+                source=(G.nodes[u]["x"], G.nodes[u]["y"]),
+                target=(G.nodes[v]["x"], G.nodes[v]["y"]),
+                path_str=attrs["path"],
+                flatness_tol=tol,
+            ))
+            for u, v, attrs in G.edges(data=True)
+        )
+        cap_o = f"ORIGINAL — canvas {w}px"
+        cap_s = f"SAMPLED — canvas {w}px  ({poly_pts} pts, tol={FLATNESS_FRACTION})"
+        _render_original_at_canvas(
+            G, sweep_dir / f"signature_canvas_{w}_original.svg", w, cap_o,
+        )
+        _render_sampled_at_canvas(
+            G, sweep_dir / f"signature_canvas_{w}_sampled.svg", tol, w, cap_s,
+        )
+        print(f"    canvas={w:5d}px  samples={poly_pts}")
+
+
 def generate_scale_sweep() -> None:
     """Render the signature drawing at several coordinate scales to a
     `scale_sweep/` sub-directory. Because both the SVG layout and the
@@ -582,7 +749,11 @@ def main() -> None:
         render_sampled(G, OUT_DIR / f"{name}_sampled.svg", tol)
         print(f"  {name:14s}  tol={tol:.3f}")
     generate_scale_sweep()
-    print(f"Wrote {2 * len(DRAWINGS)} top-level SVGs + 8 scale_sweep SVGs to {OUT_DIR}")
+    generate_canvas_sweep()
+    print(
+        f"Wrote {2 * len(DRAWINGS)} top-level SVGs + 8 scale_sweep SVGs + "
+        f"10 canvas_sweep SVGs to {OUT_DIR}"
+    )
 
 
 if __name__ == "__main__":

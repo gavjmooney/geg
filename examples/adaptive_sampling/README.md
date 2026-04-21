@@ -87,3 +87,26 @@ max polyline drift (after normalising by k) across scales: 2.8e-14
 
 Float-epsilon-level agreement. Any perceptible difference between the
 four SVGs is a regression.
+
+## Manual render-size check
+
+`canvas_sweep/` contains the same `signature` drawing (native coord scale)
+rendered at five **pixel canvas widths** — 300, 600, 1200, 2400, 3000 px.
+The adaptive sampler runs once at `flatness_fraction = 0.005`; the same
+26-point polyline is emitted at every size. Only the SVG `width` /
+`height` / `viewBox` attributes change.
+
+| File | Canvas dimensions |
+|---|---|
+| `signature_canvas_300_*` | 300 × 150 px |
+| `signature_canvas_600_*` | 600 × 300 px |
+| `signature_canvas_1200_*` | 1200 × 600 px |
+| `signature_canvas_2400_*` | 2400 × 1200 px |
+| `signature_canvas_3000_*` | 3000 × 1500 px |
+
+Use this to eyeball whether the adaptive polyline still looks smooth
+at high magnification. Because `flatness_fraction` is defined relative
+to graph coordinates, the polyline density is invariant to how large
+the browser renders it — if a curve looks jagged at 3000 px but smooth
+at 300 px, that means the flatness tolerance is too loose for your
+use case. Tighten `flatness_fraction` (0.001 or 0.0005) and regenerate.

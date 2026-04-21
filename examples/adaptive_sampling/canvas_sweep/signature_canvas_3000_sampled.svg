@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="3000.000" height="1500.000" viewBox="0 0 3000.000 1500.000">
+  <text x="10" y="87.75" font-family="monospace" font-size="67.50" fill="#555555">SAMPLED — canvas 3000px  (26 pts, tol=0.005)</text>
+  <path d="M750.000,750.000 L900.000,750.000 L937.500,665.625 L975.000,637.500 L1012.500,665.625 L1050.000,750.000 L1200.000,750.000 L1223.047,682.324 L1253.125,672.656 L1325.000,750.000 L1396.875,827.344 L1426.953,817.676 L1450.000,750.000 L1600.000,750.000 L1637.500,787.500 L1675.000,800.000 L1712.500,787.500 L1750.000,750.000 L1900.000,750.000 L1920.898,727.852 L1945.312,724.688 L2000.000,750.000 L2054.688,775.312 L2079.102,772.148 L2100.000,750.000 L2250.000,750.000" fill="none" stroke="#555555" stroke-width="14.400"/>
+  <circle cx="900.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="937.500" cy="665.625" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="975.000" cy="637.500" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1012.500" cy="665.625" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1050.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1200.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1223.047" cy="682.324" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1253.125" cy="672.656" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1325.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1396.875" cy="827.344" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1426.953" cy="817.676" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1450.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1600.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1637.500" cy="787.500" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1675.000" cy="800.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1712.500" cy="787.500" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1750.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1900.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1920.898" cy="727.852" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="1945.312" cy="724.688" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="2000.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="2054.688" cy="775.312" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="2079.102" cy="772.148" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="2100.000" cy="750.000" r="12.600" fill="#e74c3c" stroke="none"/>
+  <circle cx="750.000" cy="750.000" r="36.000" fill="#ffffff" stroke="#000000" stroke-width="9.000"/>
+  <circle cx="2250.000" cy="750.000" r="36.000" fill="#ffffff" stroke="#000000" stroke-width="9.000"/>
+</svg>
