@@ -90,15 +90,18 @@ Paper §3.3 specifies weighted-sum-by-convex-hull-area for KSM and NP, and warns
 | NR  | Full-graph | min/max over all pair distances is layout geometry, not topology |
 | NU  | Full-graph | Grid uniformity is over the full bbox |
 
-### DQ-2 — Curved / Bézier edge handling per metric
-- **Context:** `curves_promotion` explodes curves into polyline segments; `_paths.flatten_path_to_polyline` samples paths into per-edge polylines. Which metrics operate on promoted vs original geometry varies.
-- **Status per metric:**
-  - **AR:** uses the vertex-side tangent of each incident edge's path — handles Bezier correctly (paper §3.2 explicit).
-  - **CA / EC:** linearise each path into segments with `samples_per_curve` (default 100) and tolerance `min_angle_tol` (default 2.5°), per paper §3.2.
-  - **ELD:** uses `svgpathtools` arc length for curves (numerical integration), not polyline approximation. Matches paper.
-  - **EO:** uses `_paths.edge_polyline` (polyline-sampled) with length-weighted segment deviation per paper §3.2 eq. (5)-(6). `edge_orthogonality` now unified (was straight-only before Phase 2).
-  - **GR, NR, NU, KSM, NP, Asp:** node-only metrics; curves irrelevant.
-- **Remaining ambiguity:** `samples_per_curve` default of 100 for EC is a paper-prescribed value but the user can override. No hard decision owed here.
+### DQ-2 — Curved / Bézier edge handling per metric  [RESOLVED]
+- **Context:** curved edges are flattened into polylines before per-metric measurement. The decisions are (a) which sampler / density, (b) which bbox convention per metric, (c) which SVG path commands are covered.
+- **Resolution (v0.2.0):**
+  - **Unified sampling density:** `samples_per_curve = 100` for every metric that flattens paths (EC, EO, NEO, and `curves_promotion` itself). Previously EC used 100 while EO, NEO, and `_paths.flatten_path_to_polyline` defaulted to 50, and `curves_promotion` used a different diagonal-relative strategy (`target_segments=10`). Unification means the polyline a curve is measured against is the same across metrics, and the paper §3.2 prescribed value wins. Callers can still override per-call.
+  - **Unified sampler:** `_paths.flatten_path_to_polyline` is the only polyline sampler. `curves_promotion` now delegates to it; the legacy `approximate_edge_polyline` / `compute_global_scale` / `determine_N_for_segment` helpers and their re-exports are removed.
+  - **Bbox convention per metric:**
+    - **Asp** — curve-promoted bbox (keeps paper §3.2 "bounding box of the drawing" with curves included; their interior can reach outside the node hull).
+    - **NU** — node-only bbox (grid occupancy is a statement about node placement; a large curve shouldn't stretch the grid and dilute cell counts).
+    - **NEO** — node-only bbox for the `ε = epsilon_fraction · diag` scaling (ε should reflect node spread, not curve excursion). Per-edge distances still run against the promoted polyline — that hasn't changed.
+  - **SVG path-command coverage:** M, L, H, V, Q, C all covered and fixtured (`polyline_bend`, `orthogonal_hv`, `bezier_curve`, `cubic_bezier`). S (smooth cubic), T (smooth quadratic), A (arc), Z (closepath) are supported by `svgpathtools` so they flow through `_paths.flatten_path_to_polyline` transparently, but no fixture pins expected values — Z in particular is unusual for edges (they're open polylines).
+  - **Per-metric dispatch** unchanged from Phase 2: AR uses vertex-side tangents, ELD uses `svgpathtools` arc length, the rest flatten via the unified sampler.
+- **Remaining ambiguity:** none of blocking weight. Sampling-sensitive metric values drift slightly with `samples_per_curve`; see `bezier_curve.md` and `cubic_bezier.md` which deliberately leave Asp / EO unpinned on curves for that reason.
 
 ### DQ-3 — Gabriel Ratio status  [RESOLVED]
 - **Decision:** Kept in the library as non-canonical (Gavin). Paper §3.2 excludes GR because it is not applicable to drawings with curves, but the metric is still defined and useful for straight-line drawings.

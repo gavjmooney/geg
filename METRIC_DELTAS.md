@@ -91,3 +91,18 @@ classes, plus two I/O fixtures for writer round-trip / reader coverage:
 | `k5_crossed` | Non-trivial crossing count (5) via pentagram chords. | `EC = 2/3`, `NR = 1/φ`, `ELD = (s + c) / (2c)` with `s = sin(π/5)`, `c = sin(2π/5)`. All closed-form pentagon trigonometry. |
 | `io/yed_authored.graphml` | End-to-end reader on a non-toy yEd-authored file: corner-anchor auto-detect, bend parsing, round-trip. 5 nodes, 5 edges, one L-bend. | Previously only covered by inline XML strings in unit tests; real authored-file path now exercised. |
 | `io/node_with_radius.geg` | Writer fallback `radius → 2·radius` for widths in GML / GraphML (the behaviour introduced in 0.2.0 when neither `width` nor `height` is set). | Three nodes with explicit `radius` 5/10/15 → writers emit `w = h = 10/20/30`. |
+| `cubic_bezier` | Cubic Bézier (C) path command — most common curve format emitted by real graph-drawing tools. | Single arc (0,0)→(4,0) with controls (1,3)/(3,3), peak at (2, 2.25). Pinned: AR, CA, EC, ELD, NEO. Unpinned (sampling-sensitive): Asp, EO, NU. |
+| `orthogonal_hv` | SVG `H` (horizontal lineto) and `V` (vertical lineto) path commands. | `M0,0 H4 V2` — geometrically identical to `polyline_bend` but differently encoded. All metrics pin to the same values as the L-form. |
+
+## DQ-2 closure — unified curve handling
+
+v0.2.0 closes DQ-2 by unifying three previously-divergent concerns:
+
+1. **`samples_per_curve = 100`** everywhere (EC, EO, NEO, `curves_promotion`, `_paths.flatten_path_to_polyline`). Previously EC used 100 while everyone else used 50 — so the same curve was being polylined at different densities by different metrics.
+2. **Single sampler (`_paths.flatten_path_to_polyline`).** The old `approximate_edge_polyline` / `compute_global_scale` / `determine_N_for_segment` trio is removed; `curves_promotion` now delegates to the canonical helper. This also closes low-priority follow-up #2 in `ISSUES.md`.
+3. **Per-metric bbox convention:**
+   - `aspect_ratio` — curve-promoted (unchanged).
+   - `node_uniformity` — **now node-only**. Grid cells no longer get stretched by a curve reaching outside the node hull.
+   - `node_edge_occlusion` — **now node-only** for `ε` scaling. Distance computations still run against the sampled polyline.
+
+**TVCG-impact:** none. The TVCG corpus is straight-line, so every metric value is byte-identical to pre-0.2.0. For any future curved-drawing corpus, NU and NEO values may shift — they'll more accurately reflect the node layout rather than being dragged around by edge geometry.
