@@ -267,3 +267,32 @@ def flatten_path_adaptive(
         else:
             poly.extend(pts[1:])
     return poly
+
+
+# ---------- shared helper: fraction-of-diagonal → absolute tolerance ----------
+
+def flatness_tol_from_fraction(
+    G,
+    fraction: float,
+    *,
+    bbox: Optional[Tuple[float, float, float, float]] = None,
+) -> float:
+    """Convert a fraction of the node-bbox diagonal to an absolute flatness
+    tolerance in graph units. Central home for the logic that was previously
+    duplicated across `edge_orthogonality`, `edge_crossings`,
+    `node_edge_occlusion`, and `curves_promotion`.
+
+    Callers that have already computed the node-only bbox can pass it via
+    `bbox` to skip the internal `get_bounding_box(G, promote=False)` call
+    (e.g. NEO computes bbox for its epsilon scaling and reuses it here).
+
+    Degenerate graphs — all nodes coincident, diagonal = 0 — return 1.0 so
+    `flatten_path_adaptive`'s positive-tolerance invariant stays happy.
+    Metric values on such graphs aren't meaningful in the first place; the
+    fallback only prevents a ValueError crash.
+    """
+    if bbox is None:
+        from .geg_parser import get_bounding_box
+        bbox = get_bounding_box(G, promote=False)
+    diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+    return fraction * diag if diag > 0 else 1.0

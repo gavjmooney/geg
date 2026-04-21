@@ -15,24 +15,7 @@ from typing import Optional
 import networkx as nx
 
 from ._geometry import distance
-from ._paths import edge_polyline
-
-
-def _flatness_tol_from_fraction(G: nx.Graph, fraction: float) -> float:
-    """Convert a fraction-of-diagonal to an absolute flatness tolerance.
-
-    Uses the node-position bbox diagonal (curve geometry is what's being
-    flattened — tying the tolerance to the curve-promoted bbox would be
-    circular).
-    """
-    from .geg_parser import get_bounding_box
-    bbox = get_bounding_box(G, promote=False)
-    diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
-    if diag <= 0:
-        # Degenerate (all nodes coincident); fall back to a unit tolerance
-        # that won't trigger spurious errors from flatten_path_adaptive.
-        return 1.0
-    return fraction * diag
+from ._paths import edge_polyline, flatness_tol_from_fraction
 
 
 def _segment_angle_deg(p0, p1) -> float:
@@ -109,7 +92,7 @@ def edge_orthogonality(
         return 1.0
 
     if samples_per_curve is None:
-        flatness_tol = _flatness_tol_from_fraction(G, flatness_fraction)
+        flatness_tol = flatness_tol_from_fraction(G, flatness_fraction)
         fixed_N = 100  # ignored by edge_polyline when flatness_tol set
     else:
         flatness_tol = None

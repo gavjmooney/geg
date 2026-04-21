@@ -416,18 +416,12 @@ def curves_promotion(
     flatness_tol: Optional[float] = None
     fixed_N = 100  # forwarded only when samples_per_curve is None but unused
     if samples_per_curve is None:
-        # Adaptive (default). Compute tolerance relative to node-bbox
+        # Adaptive (default). Tolerance is relative to the node-only bbox
         # diagonal — using the curve-promoted bbox here would be circular
-        # (we're about to promote).
-        xs = [data['x'] for _, data in G.nodes(data=True)]
-        ys = [data['y'] for _, data in G.nodes(data=True)]
-        if xs and ys:
-            dx = max(xs) - min(xs)
-            dy = max(ys) - min(ys)
-            node_diag = math.hypot(dx, dy)
-            flatness_tol = flatness_fraction * node_diag if node_diag > 0 else 1.0
-        else:
-            flatness_tol = 1.0
+        # (we're about to promote). `get_bounding_box(G, promote=False)`
+        # bypasses curves_promotion so there's no cycle.
+        from ._paths import flatness_tol_from_fraction
+        flatness_tol = flatness_tol_from_fraction(G, flatness_fraction)
     # Make H of the same type as G
     if G.is_multigraph():
         H = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()

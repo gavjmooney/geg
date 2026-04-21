@@ -37,7 +37,7 @@ from typing import Optional, Tuple
 
 import networkx as nx
 
-from ._paths import edge_polyline
+from ._paths import edge_polyline, flatness_tol_from_fraction
 from .geg_parser import get_bounding_box
 
 
@@ -148,7 +148,8 @@ def node_edge_occlusion(
 
     epsilon = epsilon_fraction * diag
     if samples_per_curve is None:
-        flatness_tol = flatness_fraction * diag
+        # Use the node-only bbox we already computed for epsilon.
+        flatness_tol = flatness_tol_from_fraction(G, flatness_fraction, bbox=bbox)
         fixed_N = 100  # ignored by edge_polyline when flatness_tol set
     else:
         flatness_tol = None

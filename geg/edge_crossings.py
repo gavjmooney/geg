@@ -20,7 +20,12 @@ import networkx as nx
 from svgpathtools import Path
 
 from ._geometry import bboxes_intersect, segment_intersection
-from ._paths import flatten_path_adaptive, flatten_path_to_segments, parse_path
+from ._paths import (
+    flatness_tol_from_fraction,
+    flatten_path_adaptive,
+    flatten_path_to_segments,
+    parse_path,
+)
 
 CrossingHit = Tuple[Tuple[float, float], float]
 
@@ -114,10 +119,7 @@ def edge_crossings(
 
     if samples_per_curve is None:
         # Adaptive (default).
-        from .geg_parser import get_bounding_box
-        bbox = get_bounding_box(G, promote=False)
-        diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
-        tol = flatness_fraction * diag if diag > 0 else 1.0
+        tol = flatness_tol_from_fraction(G, flatness_fraction)
         polys = [_polyline_to_segments(
             flatten_path_adaptive(d["path"], tol)
         ) for _, _, d in edges]
