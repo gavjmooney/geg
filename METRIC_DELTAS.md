@@ -43,3 +43,51 @@ If Gavin wants an empirical cross-check before trusting the above:
 4. Any drawing with non-zero Δ is one of the edge cases above; inspect the `.geg` file to confirm.
 
 The fixtures in `tests/fixtures/` provide the minimal cases that isolate each delta.
+
+## New properties (0.2.0)
+
+Two analytic crossing-number lower bounds were added to
+`geg.graph_properties.PROPERTY_NAMES` (appended at the end for CSV
+column stability):
+
+| Property | Definition | Applies to |
+|---|---|---|
+| `crossing_number_lb_euler` | `max(0, m − (3n − 6))` for `n ≥ 3`; else `0`. | Every simple graph. |
+| `crossing_number_lb_bipartite` | `max(0, m − (2n − 4))` for bipartite `n ≥ 3`; else `NaN`. | Bipartite simple graphs only. |
+
+Hand-verified values on named graphs (asserted in
+`tests/test_graph_properties.py::TestCrossingNumberLowerBounds`):
+
+| Graph | `crossing_number_lb_euler` | `crossing_number_lb_bipartite` |
+|---|---|---|
+| K₄ | 0 | NaN |
+| K₅ | 1 (matches `cr(K₅)`) | NaN |
+| K₆ | 3 | NaN |
+| K₇ | 6 | NaN |
+| K₃,₃ | 0 (bipartite bound is tighter here) | 1 (matches `cr(K₃,₃)`) |
+| K₄,₄ | 0 | 4 |
+| K₅,₅ | 1 | 9 |
+| Petersen | 0 | NaN (5-cycles) |
+| P₁₀ (tree) | 0 | 0 |
+
+On the `tests/fixtures/` corpus both bounds are 0 for the bipartite /
+planar fixtures and NaN-vs-0 on the non-bipartite ones; none of the
+11 pre-0.2.0 fixtures trips a positive Euler bound because all are planar.
+
+**TVCG-impact:** none — these are additive descriptors, not metric
+value changes. Existing metric columns and property columns keep
+their previous values byte-for-byte; downstream CSVs gain two new
+trailing columns.
+
+## New fixtures (0.2.0)
+
+Three metric fixtures added to exercise previously-uncovered drawing
+classes, plus two I/O fixtures for writer round-trip / reader coverage:
+
+| Fixture | What it exercises | Notes |
+|---|---|---|
+| `disconnected_two_paths` | DQ-1 per-component weighted aggregation (KSM, NP, distance properties). | Hand-computed expected values for `aspect_ratio`, `AR`, `CA`, `EC`, `EO`, `ELD`, `GR-edges`, `KSM`, `NR`. |
+| `bezier_curve` | DQ-2 curved-edge handling — single quadratic Bézier arc. | Only sampling-insensitive metrics pinned (`AR`, `CA`, `EC`, `ELD`, `NEO`). `Asp`, `EO`, `NU` depend on sampling density and are deliberately left unpinned until DQ-2 is closed. |
+| `k5_crossed` | Non-trivial crossing count (5) via pentagram chords. | `EC = 2/3`, `NR = 1/φ`, `ELD = (s + c) / (2c)` with `s = sin(π/5)`, `c = sin(2π/5)`. All closed-form pentagon trigonometry. |
+| `io/yed_authored.graphml` | End-to-end reader on a non-toy yEd-authored file: corner-anchor auto-detect, bend parsing, round-trip. 5 nodes, 5 edges, one L-bend. | Previously only covered by inline XML strings in unit tests; real authored-file path now exercised. |
+| `io/node_with_radius.geg` | Writer fallback `radius → 2·radius` for widths in GML / GraphML (the behaviour introduced in 0.2.0 when neither `width` nor `height` is set). | Three nodes with explicit `radius` 5/10/15 → writers emit `w = h = 10/20/30`. |

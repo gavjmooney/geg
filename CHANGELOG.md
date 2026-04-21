@@ -2,9 +2,9 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — `dev/metrics-refactor-tdd`
+## [0.2.0] — 2026-04-21 (`dev/metrics-refactor-tdd`)
 
-TDD refactor of the metrics library against the GD 2025 paper definitions (paper §3.2, §3.3), plus a parser/I/O cleanup. Per-fixture value deltas against `main` are in `METRIC_DELTAS.md`; known-issue catalogue is in `ISSUES.md`.
+TDD refactor of the metrics library against the GD 2025 paper definitions (paper §3.2, §3.3), plus a parser/I/O cleanup. Per-fixture value deltas against the previous release are in `METRIC_DELTAS.md`; known-issue catalogue is in `ISSUES.md`.
 
 ### Added
 
@@ -32,13 +32,14 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
   `ValueError`. `neighbourhood_preservation` intentionally has no weighted
   variant (paper Jaccard is topological; documented).
 - **`geg.angular_resolution`** is now also callable as the canonical paper §3.2 eq. (1) min-angle variant (alias for `angular_resolution_min_angle`). The submodule path `from geg.angular_resolution import …` continues to work (resolved through `sys.modules`); only the package attribute is rebound to the function so `geg.angular_resolution(G)` is the ergonomic one-liner users probably expect.
-- **`geg.graph_properties` module** — topological descriptors of the graph, independent of the layout. 26 properties:
+- **`geg.graph_properties` module** — topological descriptors of the graph, independent of the layout. 30 properties:
   - **Basic counts & flags:** `n_nodes`, `n_edges`, `density`, `is_directed`, `is_multigraph`, `n_self_loops`, `n_connected_components`, `is_connected`.
   - **Degree statistics:** `min_degree`, `max_degree`, `mean_degree`, `degree_std`.
-  - **Structural classes:** `is_tree`, `is_forest`, `is_bipartite`, `is_planar`, `is_dag`, `is_regular`, `is_eulerian`.
+  - **Structural classes:** `is_tree`, `is_forest`, `is_bipartite`, `is_planar`, `is_dag`, `is_regular`, `is_eulerian`, `degeneracy` (k-core degeneracy: largest k for which a non-empty k-core exists; self-loops stripped, multi/directed reduced to simple undirected), `n_biconnected_components` (maximal 2-node-connected subgraphs; bridges are 2-node bicomps; isolated nodes ignored).
   - **Distances (per-component weighted sum, KSM/NP-style):** `diameter`, `radius`, `avg_shortest_path_length`. Singleton components are skipped; all-singleton graphs return NaN. Directed inputs are reduced to their undirected view for this computation, same as KSM / NP.
   - **Clustering:** `n_triangles`, `average_clustering`, `transitivity`.
   - **Assortativity:** `degree_assortativity` (NaN when undefined, e.g. regular graphs).
+  - **Analytic crossing-number lower bounds** (appended to the end of `PROPERTY_NAMES` to keep CSV column order stable for consumers joined against older rows): `crossing_number_lb_euler` (Euler's bound `max(0, m - (3n - 6))` for any simple graph; 0 when `n < 3`) and `crossing_number_lb_bipartite` (tightened to `max(0, m - (2n - 4))` for bipartite graphs with `n ≥ 3`; returns NaN on non-bipartite inputs so downstream cohort filters can distinguish "bound is 0" from "bound not applicable"). Both are O(1) in `n`, `m` (O(n + m) for the bipartite test). Matches the known crossing numbers for K₅ (=1) and K₃,₃ (=1) as a sanity check.
   - **Batch entry point:** `compute_properties(G)` returns every property as a dict, catching per-property exceptions into NaN; `PROPERTY_NAMES` pins the ordering.
   - Re-exported from the top-level package as `geg.graph_properties` and `geg.compute_properties`.
 - **`geg.io.convert` module** centralising every cross-format entry point:
@@ -47,7 +48,7 @@ TDD refactor of the metrics library against the GD 2025 paper definitions (paper
   - **`write_drawing(G, path, **kwargs)`** — write any supported output format (`.geg` / `.graphml` / `.gml` / `.svg`) by extension. SVG kwargs (`grid`, `scale`, `margin`, …) are forwarded to `to_svg`.
   - The pair-wise converters (`gml_to_geg`, `graphml_to_geg`, `convert_gml_to_graphml`, `convert_graphml_to_gml`) moved into this module; their behaviour is unchanged and every existing import path (`from geg import ...`, `from geg.io import ...`, `from geg.parse_graph import ...`) continues to resolve. `gml.py` and `graphml.py` now hold only format-native readers and writers.
 - **`read_gml(input_file)` / `write_gml(G, output_file)`.** Explicit GML reader and writer, mirroring the `read_graphml` / `write_graphml` pattern. `read_gml` returns a NetworkX graph with GEG-canonical node attributes (`x`, `y`, `width`, `height`, `colour`, `shape`, `label`) and format-native edge geometry (`bends` list + `polyline` flag, consistent with `read_graphml`). `write_gml` emits a yEd-flavoured GML file honouring `x`/`y`/`width`/`height`/`shape`/`colour`/`label` per node and `bends`/`colour`/`stroke_width`/`label`/`weight` per edge. `gml_to_geg` is unchanged in behaviour and now composes on top of `read_gml`. Both new names are re-exported from `geg` and from `geg.geg_parser` for symmetry with the GraphML pair.
-- **`node_edge_occlusion(G, epsilon_fraction=0.02, samples_per_curve=50)`** — new metric (not in the GD 2025 paper yet). For every edge, finds the non-endpoint node whose bounding disk comes closest to the drawn edge and records a cubic soft-overlap penalty `max(0, 1 - max(0, d - r) / ε) ** 3`, where `d` is the minimum distance from the node centre to the edge geometry, `r` is the node's `radius` attribute (defaults to 0 if missing), and `ε` is a fraction of the bounding-box diagonal. The score is 1 minus the mean per-edge worst-case penalty. Curved / polyline edges are handled by sampling the path via `_paths.edge_polyline`; the bbox uses curve-promoted geometry via `get_bounding_box` for consistency with Asp / NU. **Definition is provisional — pending final confirmation**, as flagged in `library_update_brief.md`.
+- **`node_edge_occlusion(G, epsilon_fraction=0.02, samples_per_curve=50)`** — new metric (not in the GD 2025 paper yet). For every edge, finds the non-endpoint node whose bounding disk comes closest to the drawn edge and records a cubic soft-overlap penalty `max(0, 1 - max(0, d - r) / ε) ** 3`, where `d` is the minimum distance from the node centre to the edge geometry, `r` is the node's `radius` attribute (defaults to 0 if missing), and `ε` is a fraction of the bounding-box diagonal. The score is 1 minus the mean per-edge worst-case penalty. Curved / polyline edges are handled by sampling the path via `_paths.edge_polyline`; the bbox uses curve-promoted geometry via `get_bounding_box` for consistency with Asp / NU. **Definition confirmed and finalised** (the "1–2 additions" flagged in `library_update_brief.md`).
 - **Test suite.** Pytest runnable from the package root (`pytest`), including 355 tests covering every public metric, every canonical helper, every fixture × expected-value claim, and the three I/O formats (GEG / GraphML / GML). Full suite runs in ~1.8s.
 - **`geg/io/` subpackage** holding the file-format readers, writers, and converters:
   - `geg.io.geg` — GEG JSON reader/writer + file-level introspection (`has_self_loops_file`, `is_multigraph_file`).
