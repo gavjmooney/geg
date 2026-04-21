@@ -327,3 +327,108 @@ class TestMetricsAdaptiveMode:
         assert H_adaptive.number_of_nodes() < H_fixed.number_of_nodes()
         # But both should still include the two original nodes.
         assert "a" in H_adaptive.nodes and "b" in H_adaptive.nodes
+
+
+class TestScaleInvariance:
+    """Adaptive flattening scales tolerances proportionally to the node-bbox
+    diagonal, so metric values must be identical on a graph regardless of
+    whether its coordinates are in the 1e-3 or 1e+6 range. Also pin the
+    flatness guarantee against extreme curve excursions where the curve
+    peak is many orders of magnitude further from the chord than tol.
+    """
+
+    def _scaled_graph(self, k):
+        """A small curved graph at scale `k`."""
+        import networkx as nx
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=4.0 * k, y=0.0)
+        G.add_node("c", x=2.0 * k, y=0.5 * k)
+        G.add_node("d", x=2.0 * k, y=-0.5 * k)
+        G.add_edge("a", "b", polyline=True,
+                   path=f"M0,0 Q{2*k},{k} {4*k},0")
+        G.add_edge("c", "d", path=f"M{2*k},{0.5*k} L{2*k},{-0.5*k}")
+        return G
+
+    def test_metric_values_identical_across_scales(self):
+        """EO, EC, NEO on the same curved graph should return the same value
+        whether coordinates are in tenths, ones, or millions."""
+        from geg import edge_crossings, edge_orthogonality, node_edge_occlusion
+        ref = None
+        for k in [1e-3, 1.0, 1e3, 1e6]:
+            G = self._scaled_graph(k)
+            vals = (
+                edge_orthogonality(G, flatness_fraction=0.005),
+                edge_crossings(G, flatness_fraction=0.005),
+                node_edge_occlusion(G, flatness_fraction=0.005),
+            )
+            if ref is None:
+                ref = vals
+            else:
+                for name, a, b in zip(("EO", "EC", "NEO"), ref, vals):
+                    assert a == pytest.approx(b, rel=1e-9, abs=1e-12), (
+                        f"{name} drifted at scale k={k}: "
+                        f"reference {a}, got {b}"
+                    )
+
+    def test_sample_count_invariant_across_scales(self):
+        """Adaptive flattener produces the same number of sample points on
+        geometrically-equivalent graphs at different scales."""
+        ref_n = None
+        for k in [1.0, 1e3, 1e6]:
+            G = self._scaled_graph(k)
+            tol = 0.005 * 4.0 * k  # flatness_fraction * node_diag
+            poly = P.edge_polyline(
+                source=(G.nodes["a"]["x"], G.nodes["a"]["y"]),
+                target=(G.nodes["b"]["x"], G.nodes["b"]["y"]),
+                path_str=G.edges["a", "b"]["path"],
+                flatness_tol=tol,
+            )
+            if ref_n is None:
+                ref_n = len(poly)
+            else:
+                assert len(poly) == ref_n, (
+                    f"sample count drifted at scale k={k}: "
+                    f"reference {ref_n}, got {len(poly)}"
+                )
+
+    def test_flatness_holds_under_extreme_curve_excursion(self):
+        """Curve peak 10,000× the chord length, tolerance 0.5% of chord —
+        adaptive subdivision must still keep every polyline sub-segment
+        within `flatness_tol` of the true curve."""
+        tol = 0.05  # 0.5% of node-bbox-diag=10
+        path_str = "M0,0 Q5,100000 10,0"
+        poly = P.flatten_path_adaptive(path_str, flatness_tol=tol)
+        seg = list(P.parse_path(path_str))[0]
+        max_dev = 0.0
+        for k in range(2000):
+            t = k / 1999
+            p = seg.point(t)
+            best = min(
+                P._point_to_segment_distance(
+                    p.real, p.imag, a[0], a[1], b[0], b[1]
+                )
+                for a, b in zip(poly, poly[1:])
+            )
+            max_dev = max(max_dev, best)
+        assert max_dev <= tol + 1e-6, (
+            f"flatness guarantee broken on extreme curve: peak y=100000, "
+            f"tol={tol}, max_dev={max_dev}"
+        )
+
+    def test_degenerate_coincident_nodes_do_not_crash(self):
+        """All nodes coincident → node-bbox diagonal = 0. The metrics must
+        gracefully return a value (not crash), typically 1.0 for NEO/EC
+        (no occlusion / no crossings detectable) and something shape-based
+        for EO."""
+        import networkx as nx
+        from geg import edge_crossings, edge_orthogonality, node_edge_occlusion
+        G = nx.Graph()
+        G.add_node("a", x=5.0, y=5.0)
+        G.add_node("b", x=5.0, y=5.0)
+        G.add_edge("a", "b", polyline=True, path="M5,5 Q7,10 5,5")
+        # Just assert they run without error and return finite floats.
+        for metric in (edge_orthogonality, edge_crossings, node_edge_occlusion):
+            val = metric(G, flatness_fraction=0.005)
+            assert math.isfinite(val)
+            assert 0.0 <= val <= 1.0
