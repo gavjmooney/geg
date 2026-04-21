@@ -281,9 +281,114 @@ def _ensure_coords(G: nx.Graph) -> None:
         G.nodes[n]["y"] = float(y) * 100.0
 
 
+def _path_extent_samples(path_str: str) -> List[Tuple[float, float]]:
+    """Return a set of (x, y) samples representing the extent of an SVG
+    path. Includes polyline vertices plus coarsely-sampled points from
+    each curved segment. Used to extend the rendering bbox so paths
+    aren't clipped."""
+    try:
+        import svgpathtools as svgp
+        p = svgp.parse_path(path_str)
+    except Exception:
+        return []
+    pts: List[Tuple[float, float]] = []
+    for seg in p:
+        try:
+            # Sample 10 points per segment; covers Q/C/S/T/A reasonably.
+            for k in range(11):
+                t = k / 10
+                z = seg.point(t)
+                pts.append((z.real, z.imag))
+        except Exception:
+            # Fall back to endpoints only.
+            for attr in ("start", "end"):
+                if hasattr(seg, attr):
+                    z = getattr(seg, attr)
+                    pts.append((z.real, z.imag))
+    return pts
+
+
+def _graph_bbox(G: nx.Graph) -> Tuple[float, float, float, float]:
+    """Bbox (min_x, min_y, max_x, max_y) across both node positions AND
+    any sampled geometry from edge path attrs. Ensures polyline bends /
+    curved arcs that reach outside the node hull aren't clipped."""
+    xs: List[float] = []
+    ys: List[float] = []
+    for _, a in G.nodes(data=True):
+        xs.append(float(a["x"])); ys.append(float(a["y"]))
+    for _, _, attrs in G.edges(data=True):
+        path = attrs.get("path")
+        if not path:
+            continue
+        for px, py in _path_extent_samples(path):
+            xs.append(px); ys.append(py)
+    if not xs:
+        return 0.0, 0.0, 1.0, 1.0
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _split_far_components(G: nx.Graph) -> Optional[List[Tuple[str, nx.Graph]]]:
+    """If G's connected components are so far apart that rendering them
+    at a single scale would compress each one into a dot, split into
+    per-component subgraphs. Returns None if the components are already
+    comparably-sized (or there's only one)."""
+    # Undirected view for component analysis.
+    try:
+        if G.is_directed():
+            components = list(nx.weakly_connected_components(G))
+        else:
+            components = list(nx.connected_components(G))
+    except Exception:
+        return None
+    if len(components) < 2:
+        return None
+
+    def extent_of(nodes: set) -> float:
+        xs = [float(G.nodes[n]["x"]) for n in nodes if "x" in G.nodes[n]]
+        ys = [float(G.nodes[n]["y"]) for n in nodes if "y" in G.nodes[n]]
+        if not xs:
+            return 0.0
+        return max(max(xs) - min(xs), max(ys) - min(ys))
+
+    extents = [extent_of(c) for c in components]
+    max_extent = max(extents)
+    # Compute overall bbox extent to compare.
+    full_xs, full_ys = [], []
+    for _, a in G.nodes(data=True):
+        full_xs.append(float(a["x"])); full_ys.append(float(a["y"]))
+    overall = max(max(full_xs) - min(full_xs), max(full_ys) - min(full_ys), 1e-9)
+
+    # Heuristic: if the biggest single component is less than 30% of the
+    # overall extent, single-scale rendering loses too much local detail.
+    if max_extent / overall > 0.3:
+        return None
+
+    # Split. Each sub-component gets a subgraph + its own label.
+    subs: List[Tuple[str, nx.Graph]] = []
+    for i, c in enumerate(components, start=1):
+        Gi = G.subgraph(c).copy()
+        subs.append((f"component {i}", Gi))
+    return subs
+
+
+def _render_self_loop(nx_: float, ny_: float, r_node: float) -> str:
+    """Visible self-loop: a small circle tangent to the node, above-right."""
+    r_loop = max(r_node * 2.0, 6.0)
+    cx = nx_ + r_loop * 0.9
+    cy = ny_ - r_loop * 0.9
+    return (
+        f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r_loop:.2f}" '
+        f'fill="none" stroke="#24292e" stroke-width="1.5"/>'
+    )
+
+
 def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
                       label: Optional[str] = None) -> str:
-    """Render a single graph into the given rectangle of the parent SVG."""
+    """Render a single graph into the given rectangle. Handles:
+      - node bbox extended with path geometry (curves / polylines don't clip)
+      - self-loops drawn as visible small circles
+      - component auto-split when clusters would otherwise be dot-sized
+    """
     _ensure_coords(G)
     parts: List[str] = [
         f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" '
@@ -297,13 +402,32 @@ def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
         )
         return "\n".join(parts)
 
-    xs = [float(a["x"]) for _, a in G.nodes(data=True)]
-    ys = [float(a["y"]) for _, a in G.nodes(data=True)]
-    pad_frac = 0.15
-    extent = max(max(xs) - min(xs), max(ys) - min(ys), 1e-9)
-    pad = extent * pad_frac
-    min_x, max_x = min(xs) - pad, max(xs) + pad
-    min_y, max_y = min(ys) - pad, max(ys) + pad
+    # Auto-split disconnected graphs whose components are far apart.
+    sub = _split_far_components(G)
+    if sub is not None:
+        # Recurse into a sub-gallery within this panel; skip the normal
+        # single-scale render to avoid the "dot cluster" problem.
+        if label:
+            parts.append(
+                f'<text x="{x0 + 8}" y="{y0 + 16}" '
+                f'font-family="monospace" font-size="12" fill="#0366d6" '
+                f'font-weight="600">{html_escape(label)} '
+                f'<tspan fill="#6a737d">({len(sub)} components)</tspan></text>'
+            )
+        inner_y = y0 + (24 if label else 8)
+        inner_h = h - (24 if label else 8) - 8
+        # Delegate to gallery layout for per-component sub-panels.
+        parts.append(_render_gallery(sub, x0 + 4, inner_y,
+                                     w - 8, inner_h))
+        return "\n".join(parts)
+
+    # Path-inclusive bbox.
+    min_x, min_y, max_x, max_y = _graph_bbox(G)
+    bbox_w = max(max_x - min_x, 1e-9)
+    bbox_h = max(max_y - min_y, 1e-9)
+    pad = max(bbox_w, bbox_h) * 0.10
+    min_x -= pad; max_x += pad
+    min_y -= pad; max_y += pad
     scale = min(w - 30, h - 30) / max(max_x - min_x, max_y - min_y, 1e-9)
 
     dx = (w - (max_x - min_x) * scale) / 2
@@ -314,7 +438,6 @@ def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
     def tx(a: dict) -> Tuple[float, float]:
         return float(a["x"]) * scale + ox, float(a["y"]) * scale + oy
 
-    # Optional header label.
     if label:
         parts.append(
             f'<text x="{x0 + 8}" y="{y0 + 16}" '
@@ -324,6 +447,9 @@ def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
 
     # Edges.
     for u, v, attrs in G.edges(data=True):
+        if u == v:
+            # Defer — draw after we know the node's render position.
+            continue
         path = attrs.get("path")
         if path:
             try:
@@ -353,10 +479,13 @@ def _render_one_graph(G: nx.Graph, x0: float, y0: float, w: float, h: float,
             f'stroke="#24292e" stroke-width="1.5"/>'
         )
 
-    # Nodes with labels.
+    # Nodes with labels, and self-loops (drawn on top of the node).
     r = 5
     for n, a in G.nodes(data=True):
         nx_, ny_ = tx(a)
+        # Any self-loop incident to this node?
+        if G.has_edge(n, n):
+            parts.append(_render_self_loop(nx_, ny_, r))
         parts.append(
             f'<circle cx="{nx_:.2f}" cy="{ny_:.2f}" r="{r}" '
             f'fill="#ffffff" stroke="#24292e" stroke-width="1.5"/>'

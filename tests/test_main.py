@@ -149,6 +149,85 @@ class TestComputeMetricsEdgeCases:
         for name, value in result.items():
             assert math.isfinite(value) or math.isnan(value), f"{name} = {value}"
 
+
+class TestSelfLoopMetricValues:
+    """Pin metric values on canonical self-loop drawings. Existing
+    self-loop coverage checks that nothing crashes but pins no values —
+    this makes silent drift visible if a future refactor subtly changes
+    how any metric sees the u == v case.
+
+    Not exhaustive: metrics that a self-loop should leave undisturbed
+    (EC, CA, NEO, GR, NR) are pinned at 1.0; metrics that self-loops
+    materially change (EO, AR, ELD, Asp) are pinned at currently-
+    observed values against a known fixture.
+    """
+
+    def test_pure_self_loop_with_isolated_node(self):
+        """Single self-loop on `a` plus an isolated `b`. The self-loop's
+        Q curve extends the bbox above the chord so Asp ≠ 1."""
+        import pytest
+        import networkx as nx
+        from geg import (
+            angular_resolution_min_angle, aspect_ratio, crossing_angle,
+            edge_crossings, edge_length_deviation, edge_orthogonality,
+            gabriel_ratio_edges, node_edge_occlusion, node_resolution,
+            node_uniformity,
+        )
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "a", polyline=True, path="M0,0 Q3,3 0,0")
+
+        # Metrics that ignore / are immune to the self-loop.
+        assert angular_resolution_min_angle(G) == pytest.approx(1.0)
+        assert crossing_angle(G) == pytest.approx(1.0)
+        assert edge_crossings(G) == pytest.approx(1.0)
+        assert gabriel_ratio_edges(G) == pytest.approx(1.0)
+        assert node_edge_occlusion(G) == pytest.approx(1.0)
+        assert node_resolution(G) == pytest.approx(1.0)
+        assert node_uniformity(G) == pytest.approx(1.0)
+        assert edge_length_deviation(G) == pytest.approx(1.0)
+
+        # Aspect ratio uses the curve-promoted bbox: width = 10, height
+        # = 1.5 (Q curve peak at (1.5, 1.5), t=0.5) → h/w = 0.15.
+        assert aspect_ratio(G) == pytest.approx(0.15)
+
+        # EO on the self-loop only: the Q curve samples at ~45° angles,
+        # giving a mean segment-deviation ≈ 1 → EO ≈ 0.
+        assert edge_orthogonality(G) == pytest.approx(0.0, abs=1e-6)
+
+    def test_triangle_plus_self_loop(self):
+        """Equilateral triangle with an extra self-loop on vertex `a`.
+        The self-loop *does* perturb the metrics that weight edges —
+        pin current behaviour so we catch silent drift."""
+        import math
+        import pytest
+        import networkx as nx
+        from geg import (
+            angular_resolution_min_angle, edge_crossings, edge_length_deviation,
+            edge_orthogonality, gabriel_ratio_edges, node_edge_occlusion,
+        )
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=1.0, y=0.0)
+        G.add_node("c", x=0.5, y=math.sqrt(3) / 2)
+        G.add_edge("a", "b", path="M0,0 L1,0")
+        G.add_edge("b", "c", path=f"M1,0 L0.5,{math.sqrt(3) / 2}")
+        G.add_edge("c", "a", path=f"M0.5,{math.sqrt(3) / 2} L0,0")
+        G.add_edge("a", "a", polyline=True, path="M0,0 Q-0.3,-0.3 0,0")
+
+        # AR changes at vertex a (now degree 4 with self-loop's two
+        # tangents, vs degree 2 on plain triangle).
+        assert angular_resolution_min_angle(G) == pytest.approx(4.0 / 9.0)
+        # EC / NEO / GR still see no crossings / occlusions on a legal
+        # planar triangle + localised self-loop.
+        assert edge_crossings(G) == pytest.approx(1.0)
+        assert gabriel_ratio_edges(G) == pytest.approx(1.0)
+        assert node_edge_occlusion(G) == pytest.approx(1.0)
+        # EO / ELD drift vs. the plain triangle (EO=5/9, ELD=1):
+        assert edge_orthogonality(G) == pytest.approx(0.416667, abs=1e-5)
+        assert edge_length_deviation(G) == pytest.approx(0.798594, abs=1e-5)
+
     def test_directed_graph_with_curve(self, m):
         import networkx as nx
         G = nx.DiGraph()
