@@ -1,17 +1,17 @@
 <?xml version="1.0" ?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="150.0" height="150.0" viewBox="-50.0 -50.0 150.0 150.0">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="800.0" height="800.0" viewBox="-50.0 -50.0 800.0 800.0">
   <g class="grid">
-    <line stroke-width="0.5" x1="0.0" y1="-50.0" x2="0.0" y2="100.0" stroke="#ddd"/>
-    <line stroke-width="0.5" x1="50.0" y1="-50.0" x2="50.0" y2="100.0" stroke="#ddd"/>
-    <line stroke-width="0.5" x1="-50.0" y1="0.0" x2="100.0" y2="0.0" stroke="#ddd"/>
-    <line stroke-width="0.5" x1="-50.0" y1="50.0" x2="100.0" y2="50.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="0.0" y1="-50.0" x2="0.0" y2="750.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="700.0" y1="-50.0" x2="700.0" y2="750.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="-50.0" y1="0.0" x2="750.0" y2="0.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="-50.0" y1="700.0" x2="750.0" y2="700.0" stroke="#ddd"/>
   </g>
-  <path stroke-width="2.0" d="M0,0 L50,0" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M0,50 L0,0" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M50,0 L50,50" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M50,50 L0,50" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M0,0 L700,0" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M0,700 L0,0" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M700,0 L700,700" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M700,700 L0,700" fill="none" stroke="black"/>
   <ellipse stroke-width="2.0" cx="0.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="a"/>
-  <ellipse stroke-width="2.0" cx="50.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="b"/>
-  <ellipse stroke-width="2.0" cx="50.0" cy="50.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="c"/>
-  <ellipse stroke-width="2.0" cx="0.0" cy="50.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="d"/>
+  <ellipse stroke-width="2.0" cx="700.0" cy="0.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="b"/>
+  <ellipse stroke-width="2.0" cx="700.0" cy="700.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="c"/>
+  <ellipse stroke-width="2.0" cx="0.0" cy="700.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="d"/>
 </svg>

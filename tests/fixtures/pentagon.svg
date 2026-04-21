@@ -1,18 +1,18 @@
 <?xml version="1.0" ?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="195.10565162951536" height="190.45084971874738" viewBox="-97.55282581475768 -100.0 195.10565162951536 190.45084971874738">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="800.0" height="765.7395614066074" viewBox="-400.0 -418.01177848339347 800.0 765.7395614066074">
   <g class="grid">
-    <line stroke-width="0.5" x1="0.0" y1="-100.0" x2="0.0" y2="90.45084971874738" stroke="#ddd"/>
-    <line stroke-width="0.5" x1="-97.55282581475768" y1="-50.0" x2="97.55282581475768" y2="-50.0" stroke="#ddd"/>
-    <line stroke-width="0.5" x1="-97.55282581475768" y1="0.0" x2="97.55282581475768" y2="0.0" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="0.0" y1="-418.01177848339347" x2="0.0" y2="347.72778292321397" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="-400.0" y1="-368.01177848339347" x2="400.0" y2="-368.01177848339347" stroke="#ddd"/>
+    <line stroke-width="0.5" x1="-400.0" y1="0.0" x2="400.0" y2="0.0" stroke="#ddd"/>
   </g>
-  <path stroke-width="2.0" d="M3.06162e-15,-50 L47.5528,-15.4508" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M-47.5528,-15.4508 L3.06162e-15,-50" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M47.5528,-15.4508 L29.3893,40.4508" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M29.3893,40.4508 L-29.3893,40.4508" fill="none" stroke="black"/>
-  <path stroke-width="2.0" d="M-29.3893,40.4508 L-47.5528,-15.4508" fill="none" stroke="black"/>
-  <ellipse stroke-width="2.0" cx="3.061616997868383e-15" cy="-50.0" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v0"/>
-  <ellipse stroke-width="2.0" cx="47.552825814757675" cy="-15.450849718747369" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v1"/>
-  <ellipse stroke-width="2.0" cx="29.389262614623657" cy="40.45084971874737" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v2"/>
-  <ellipse stroke-width="2.0" cx="-29.38926261462365" cy="40.45084971874737" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v3"/>
-  <ellipse stroke-width="2.0" cx="-47.55282581475768" cy="-15.450849718747364" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v4"/>
+  <path stroke-width="2.0" d="M2.25342e-14,-368.012 L350,-113.722" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M-350,-113.722 L2.25342e-14,-368.012" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M350,-113.722 L216.312,297.728" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M216.312,297.728 L-216.312,297.728" fill="none" stroke="black"/>
+  <path stroke-width="2.0" d="M-216.312,297.728 L-350,-113.722" fill="none" stroke="black"/>
+  <ellipse stroke-width="2.0" cx="2.253422232841063e-14" cy="-368.01177848339347" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v0"/>
+  <ellipse stroke-width="2.0" cx="349.99999999999994" cy="-113.72189368151719" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v1"/>
+  <ellipse stroke-width="2.0" cx="216.31189606246318" cy="297.72778292321397" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v2"/>
+  <ellipse stroke-width="2.0" cx="-216.31189606246312" cy="297.72778292321397" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v3"/>
+  <ellipse stroke-width="2.0" cx="-350.0" cy="-113.72189368151714" rx="10.0" ry="10.0" fill="#FFFFFF" stroke="black" id="v4"/>
 </svg>
