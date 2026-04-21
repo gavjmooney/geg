@@ -657,15 +657,46 @@ def _render_test_svg(
 # =====================================================================
 
 
+REVIEW_FILE = OUT_DIR / "review.json"
+
+
+def _load_review_state() -> Dict[str, Dict]:
+    """Load the reviewer's verified/comment state from disk, if present.
+    The file is the source of truth across regenerations — on gen, we
+    embed its contents as the viewer's initial state, so the reviewer's
+    annotations survive `python -m tests._manual_verification` reruns.
+    """
+    import json
+    if not REVIEW_FILE.exists():
+        return {}
+    try:
+        raw = REVIEW_FILE.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        # Only keep keys that match current entries schema.
+        return {
+            k: {
+                "verified": bool(v.get("verified", False)),
+                "comment": str(v.get("comment", "")),
+            }
+            for k, v in data.items()
+            if isinstance(v, dict)
+        }
+    except (OSError, ValueError):
+        return {}
+
+
 def _write_viewer(entries: List[Dict]) -> None:
-    """Single-page HTML viewer: sidebar on the left, SVG in the centre,
-    prev/next navigation with keyboard shortcuts."""
+    """Single-page HTML viewer: sidebar, SVG frame, per-test review pane
+    (verified checkbox + comment textarea), filter dropdown, import/export,
+    prev-next navigation with keyboard shortcuts."""
     import json
 
     manifest = json.dumps(entries, ensure_ascii=False)
+    initial_review = json.dumps(_load_review_state(), ensure_ascii=False)
 
     # Escape `</script>` in JSON embed to prevent premature termination.
     manifest_safe = manifest.replace("</", "<\\/")
+    initial_review_safe = initial_review.replace("</", "<\\/")
 
     html = """<!DOCTYPE html>
 <html lang="en">
@@ -679,13 +710,13 @@ def _write_viewer(entries: List[Dict]) -> None:
                  Oxygen, Ubuntu, Cantarell, sans-serif; color: #24292e; }
   #app { display: flex; height: 100vh; }
   #sidebar {
-    width: 340px; flex: 0 0 340px; background: #fafbfc;
+    width: 360px; flex: 0 0 360px; background: #fafbfc;
     border-right: 1px solid #e1e4e8; overflow-y: auto;
     font-size: 13px;
   }
   #sidebar header {
     padding: 14px 16px; border-bottom: 1px solid #e1e4e8;
-    background: #ffffff; position: sticky; top: 0;
+    background: #ffffff; position: sticky; top: 0; z-index: 1;
   }
   #sidebar h1 { margin: 0; font-size: 15px; font-weight: 600; }
   #sidebar .meta { margin-top: 4px; color: #6a737d; font-size: 11px;
@@ -694,6 +725,16 @@ def _write_viewer(entries: List[Dict]) -> None:
     width: 100%; margin-top: 8px; padding: 6px 8px;
     border: 1px solid #d1d5da; border-radius: 3px; font-size: 12px;
     font-family: inherit;
+  }
+  #statusFilter {
+    width: 100%; margin-top: 6px; padding: 4px 6px;
+    border: 1px solid #d1d5da; border-radius: 3px; font-size: 12px;
+    background: #ffffff;
+  }
+  #reviewProgress {
+    margin-top: 8px; padding: 4px 8px; background: #f1f8ff;
+    border-radius: 3px; font-family: monospace; font-size: 11px;
+    color: #0366d6;
   }
   #sidebar .module {
     font-weight: 600; color: #24292e; padding: 10px 16px 4px;
@@ -705,19 +746,25 @@ def _write_viewer(entries: List[Dict]) -> None:
     font-family: monospace; text-transform: none;
   }
   #sidebar a {
-    display: block; padding: 3px 16px 3px 28px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 16px 3px 28px;
     color: #0366d6; text-decoration: none; font-family: monospace;
     font-size: 12px; border-left: 3px solid transparent;
   }
-  #sidebar a.no-graph { color: #959da5; }
+  #sidebar a .label { flex: 1 1 auto; overflow: hidden;
+                      text-overflow: ellipsis; white-space: nowrap; }
+  #sidebar a .indicator { flex: 0 0 auto; font-size: 11px; color: #6a737d; }
+  #sidebar a.no-graph .label { color: #959da5; }
   #sidebar a:hover { background: #eef2f6; }
   #sidebar a.active {
     background: #eef2f6; border-left-color: #0366d6;
     color: #0366d6; font-weight: 600;
   }
-  #main { flex: 1 1 auto; display: flex; flex-direction: column; }
+  #sidebar a.verified .indicator.check { color: #28a745; }
+  #sidebar a.commented .indicator.comment { color: #f6a100; }
+  #main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
   #toolbar {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 8px 16px; background: #f6f8fa;
     border-bottom: 1px solid #e1e4e8; font-size: 13px;
   }
@@ -728,22 +775,48 @@ def _write_viewer(entries: List[Dict]) -> None:
   }
   #toolbar button:hover { background: #eaecef; }
   #toolbar button:disabled { color: #959da5; cursor: not-allowed; }
-  #toolbar .label { color: #6a737d; }
+  #toolbar .hint { color: #6a737d; font-size: 11px; }
   #toolbar .pos { margin-left: auto; color: #6a737d; font-family: monospace; }
+  #toolbar .sep { width: 1px; background: #e1e4e8; align-self: stretch; }
   #viewer {
-    flex: 1 1 auto; overflow: auto; padding: 18px;
+    flex: 1 1 auto; overflow: auto; padding: 18px 18px 6px 18px;
     background: #eef2f6;
     display: flex; justify-content: center; align-items: flex-start;
   }
   #viewer object {
     background: #ffffff; border: 1px solid #d1d5da; border-radius: 3px;
     box-shadow: 0 1px 3px rgba(27,31,35,0.06);
+    max-width: 100%;
+  }
+  #reviewPane {
+    flex: 0 0 auto; padding: 10px 18px 14px 18px;
+    background: #ffffff; border-top: 1px solid #e1e4e8;
+  }
+  #reviewPane .row1 {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 6px;
+  }
+  #reviewPane label.verif {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  #reviewPane input[type="checkbox"] {
+    width: 18px; height: 18px; cursor: pointer;
+  }
+  #reviewPane #saveStatus {
+    color: #6a737d; font-size: 11px; font-family: monospace;
+  }
+  #reviewPane textarea {
+    width: 100%; min-height: 48px; max-height: 120px; resize: vertical;
+    padding: 6px 8px; border: 1px solid #d1d5da; border-radius: 3px;
+    font-family: Consolas, Menlo, monospace; font-size: 12px;
+    line-height: 1.4; color: #24292e;
   }
   kbd {
     display: inline-block; padding: 1px 5px; font-size: 10px;
     font-family: monospace; background: #f6f8fa; border: 1px solid #d1d5da;
     border-radius: 3px; color: #24292e;
   }
+  input[type="file"] { display: none; }
 </style>
 </head>
 <body>
@@ -753,6 +826,13 @@ def _write_viewer(entries: List[Dict]) -> None:
       <h1>manual test verification</h1>
       <div class="meta" id="count"></div>
       <input id="filter" type="text" placeholder="filter tests (regex)…" autocomplete="off"/>
+      <select id="statusFilter">
+        <option value="all">Show: all tests</option>
+        <option value="unverified">Show: unverified only</option>
+        <option value="verified">Show: verified only</option>
+        <option value="commented">Show: with comments</option>
+      </select>
+      <div id="reviewProgress"></div>
     </header>
     <div id="list"></div>
   </nav>
@@ -760,31 +840,112 @@ def _write_viewer(entries: List[Dict]) -> None:
     <div id="toolbar">
       <button id="prev">◀ Prev</button>
       <button id="next">Next ▶</button>
-      <span class="label">
-        <kbd>←</kbd>/<kbd>→</kbd> prev/next &nbsp; <kbd>/</kbd> filter
+      <span class="sep"></span>
+      <button id="exportBtn" title="Download review.json — place in manual_verification/ to persist across regenerations">⬇ Export review.json</button>
+      <button id="importBtn" title="Load review state from a JSON file">⬆ Import…</button>
+      <input id="importFile" type="file" accept=".json"/>
+      <span class="sep"></span>
+      <span class="hint">
+        <kbd>←</kbd>/<kbd>→</kbd> nav &nbsp; <kbd>v</kbd> toggle verified &nbsp; <kbd>c</kbd> focus comment &nbsp; <kbd>/</kbd> filter
       </span>
       <span class="pos" id="pos"></span>
     </div>
     <div id="viewer">
       <object id="frame" type="image/svg+xml" width="1400" height="800"></object>
     </div>
+    <div id="reviewPane">
+      <div class="row1">
+        <label class="verif">
+          <input id="verifiedBox" type="checkbox"/>
+          <span>Verified</span>
+        </label>
+        <span id="saveStatus">&nbsp;</span>
+      </div>
+      <textarea id="commentBox" placeholder="Comments, TODOs, questions for the author — saved automatically (browser) and to review.json via Export."></textarea>
+    </div>
   </section>
 </div>
 <script>
 const ENTRIES = __MANIFEST__;
+const INITIAL_REVIEW = __INITIAL_REVIEW__;
+const LS_KEY = "geg_manual_verification_review_v1";
+
+// --- Review state -------------------------------------------------------
+// Shape: { [key]: { verified: bool, comment: string } }
+// Merged on load: localStorage (most recent in-browser edits) overrides
+// the at-gen-time snapshot from review.json, so no one-way data loss when
+// regeneration rebuilds the viewer from a stale review.json.
+
+function loadReviewState() {
+  const embedded = INITIAL_REVIEW || {};
+  let local = {};
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) local = JSON.parse(raw);
+  } catch (e) { /* ignore parse errors */ }
+  const merged = Object.assign({}, embedded, local);
+  return merged;
+}
+function saveReviewState(state) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { /* quota exceeded — rare, tolerable */ }
+}
+function getRecord(key) {
+  if (!review[key]) review[key] = { verified: false, comment: "" };
+  return review[key];
+}
+function hasAnnotation(key) {
+  const r = review[key];
+  return r && (r.verified || (r.comment && r.comment.trim().length > 0));
+}
+
+let review = loadReviewState();
+
+// --- DOM refs -----------------------------------------------------------
 const list = document.getElementById("list");
 const filter = document.getElementById("filter");
+const statusFilter = document.getElementById("statusFilter");
 const frame = document.getElementById("frame");
 const prevBtn = document.getElementById("prev");
 const nextBtn = document.getElementById("next");
 const pos = document.getElementById("pos");
 const count = document.getElementById("count");
+const progress = document.getElementById("reviewProgress");
+const verifiedBox = document.getElementById("verifiedBox");
+const commentBox = document.getElementById("commentBox");
+const saveStatus = document.getElementById("saveStatus");
+const exportBtn = document.getElementById("exportBtn");
+const importBtn = document.getElementById("importBtn");
+const importFile = document.getElementById("importFile");
 
 count.textContent = ENTRIES.length + " tests · " +
   ENTRIES.filter(e => e.has_graph).length + " with graphs";
 
 let filtered = ENTRIES.slice();
 let cursor = 0;
+
+// --- Rendering ----------------------------------------------------------
+function applyFilters() {
+  const q = filter.value.trim();
+  let re = null;
+  if (q) {
+    try { re = new RegExp(q, "i"); }
+    catch { re = new RegExp(q.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i"); }
+  }
+  const status = statusFilter.value;
+  filtered = ENTRIES.filter(e => {
+    if (re && !(re.test(e.func) || re.test(e.cls || "") || re.test(e.module))) {
+      return false;
+    }
+    const r = review[e.key] || {};
+    if (status === "verified" && !r.verified) return false;
+    if (status === "unverified" && r.verified) return false;
+    if (status === "commented" && !(r.comment && r.comment.trim())) return false;
+    return true;
+  });
+  if (cursor >= filtered.length) cursor = Math.max(0, filtered.length - 1);
+  render();
+}
 
 function render() {
   list.innerHTML = "";
@@ -808,8 +969,25 @@ function render() {
     }
     const a = document.createElement("a");
     a.href = "#" + e.key;
-    a.textContent = e.func;
-    if (!e.has_graph) a.className = "no-graph";
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "label";
+    labelSpan.textContent = e.func;
+    a.appendChild(labelSpan);
+    const indicator = document.createElement("span");
+    indicator.className = "indicator";
+    const r = review[e.key] || {};
+    let indicatorText = "";
+    if (r.verified) {
+      indicatorText += "✓";
+      a.classList.add("verified");
+    }
+    if (r.comment && r.comment.trim()) {
+      indicatorText += (indicatorText ? " " : "") + "💬";
+      a.classList.add("commented");
+    }
+    indicator.textContent = indicatorText;
+    a.appendChild(indicator);
+    if (!e.has_graph) a.classList.add("no-graph");
     a.dataset.idx = i;
     a.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -817,16 +995,36 @@ function render() {
     });
     list.appendChild(a);
   });
+  updateProgress();
   show();
 }
 
+function updateProgress() {
+  const total = ENTRIES.length;
+  const verified = ENTRIES.filter(e => (review[e.key] || {}).verified).length;
+  const commented = ENTRIES.filter(e => {
+    const r = review[e.key] || {};
+    return r.comment && r.comment.trim();
+  }).length;
+  const pct = total ? Math.round(100 * verified / total) : 0;
+  progress.textContent =
+    `${verified}/${total} verified (${pct}%) · ${commented} with comments`;
+}
+
 function show() {
-  filtered.forEach((e, i) => {
+  filtered.forEach((_, i) => {
     const a = document.querySelector(`#list a[data-idx="${i}"]`);
     if (a) a.classList.toggle("active", i === cursor);
   });
   const active = filtered[cursor];
-  if (!active) return;
+  if (!active) {
+    frame.data = "";
+    verifiedBox.checked = false;
+    commentBox.value = "";
+    pos.textContent = "0 / 0";
+    prevBtn.disabled = nextBtn.disabled = true;
+    return;
+  }
   frame.data = active.path;
   history.replaceState(null, "", "#" + active.key);
   pos.textContent = (cursor + 1) + " / " + filtered.length;
@@ -834,6 +1032,11 @@ function show() {
   nextBtn.disabled = cursor === filtered.length - 1;
   const activeElem = document.querySelector(`#list a.active`);
   if (activeElem) activeElem.scrollIntoView({ block: "nearest" });
+  // Populate review panel for the current test.
+  const r = getRecord(active.key);
+  verifiedBox.checked = !!r.verified;
+  commentBox.value = r.comment || "";
+  saveStatus.textContent = "";
 }
 
 function go(i) {
@@ -841,34 +1044,123 @@ function go(i) {
   show();
 }
 
+// --- Review-state mutation ---------------------------------------------
+function flashSaved() {
+  saveStatus.textContent = "saved ✓";
+  setTimeout(() => { saveStatus.textContent = ""; }, 1200);
+}
+
+function touchCurrent(mutate) {
+  const active = filtered[cursor];
+  if (!active) return;
+  const r = getRecord(active.key);
+  mutate(r);
+  // Clean up: if both empty, drop the record so review.json stays small.
+  if (!r.verified && !(r.comment && r.comment.trim())) {
+    delete review[active.key];
+  }
+  saveReviewState(review);
+  // Update sidebar indicator for this entry without re-rendering all.
+  const elem = document.querySelector(`#list a[data-idx="${cursor}"]`);
+  if (elem) {
+    const rec = review[active.key] || {};
+    elem.classList.toggle("verified", !!rec.verified);
+    elem.classList.toggle("commented", !!(rec.comment && rec.comment.trim()));
+    const ind = elem.querySelector(".indicator");
+    let t = "";
+    if (rec.verified) t += "✓";
+    if (rec.comment && rec.comment.trim()) t += (t ? " " : "") + "💬";
+    ind.textContent = t;
+  }
+  updateProgress();
+  flashSaved();
+}
+
+verifiedBox.addEventListener("change", () => {
+  touchCurrent(r => { r.verified = verifiedBox.checked; });
+});
+
+let commentTimer = null;
+commentBox.addEventListener("input", () => {
+  saveStatus.textContent = "saving…";
+  clearTimeout(commentTimer);
+  commentTimer = setTimeout(() => {
+    touchCurrent(r => { r.comment = commentBox.value; });
+  }, 400);
+});
+
+// --- Import / export ----------------------------------------------------
+exportBtn.addEventListener("click", () => {
+  // Strip empty entries for a tidy file.
+  const out = {};
+  for (const [k, v] of Object.entries(review)) {
+    if (v.verified || (v.comment && v.comment.trim())) out[k] = v;
+  }
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "review.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+importBtn.addEventListener("click", () => importFile.click());
+importFile.addEventListener("change", async (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    // Merge (import does not wipe local state; user can re-export to drop).
+    for (const [k, v] of Object.entries(data)) {
+      if (typeof v === "object" && v !== null) {
+        review[k] = {
+          verified: !!v.verified,
+          comment: String(v.comment || ""),
+        };
+      }
+    }
+    saveReviewState(review);
+    applyFilters();
+    alert("Imported review state from " + file.name);
+  } catch (e) {
+    alert("Failed to import: " + e.message);
+  }
+  importFile.value = "";
+});
+
+// --- Navigation + keyboard ---------------------------------------------
 prevBtn.addEventListener("click", () => go(cursor - 1));
 nextBtn.addEventListener("click", () => go(cursor + 1));
 
 document.addEventListener("keydown", (ev) => {
-  if (document.activeElement === filter) {
-    if (ev.key === "Escape") { filter.blur(); }
+  // Never hijack keys when typing in a form control.
+  const active = document.activeElement;
+  const typing = active === filter || active === commentBox ||
+                 active === statusFilter;
+  if (typing) {
+    if (ev.key === "Escape") active.blur();
     return;
   }
   if (ev.key === "ArrowLeft")  { ev.preventDefault(); go(cursor - 1); }
   if (ev.key === "ArrowRight") { ev.preventDefault(); go(cursor + 1); }
   if (ev.key === "/")          { ev.preventDefault(); filter.focus(); filter.select(); }
+  if (ev.key === "v" || ev.key === "V") {
+    ev.preventDefault();
+    verifiedBox.checked = !verifiedBox.checked;
+    verifiedBox.dispatchEvent(new Event("change"));
+  }
+  if (ev.key === "c" || ev.key === "C") {
+    ev.preventDefault();
+    commentBox.focus();
+  }
 });
 
-filter.addEventListener("input", () => {
-  const q = filter.value.trim();
-  if (!q) {
-    filtered = ENTRIES.slice();
-  } else {
-    let re;
-    try { re = new RegExp(q, "i"); }
-    catch { re = new RegExp(q.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i"); }
-    filtered = ENTRIES.filter(e =>
-      re.test(e.func) || re.test(e.cls || "") || re.test(e.module)
-    );
-  }
-  cursor = 0;
-  render();
-});
+filter.addEventListener("input", applyFilters);
+statusFilter.addEventListener("change", applyFilters);
 
 // Restore from URL hash on load.
 const initialHash = decodeURIComponent(location.hash.replace(/^#/, ""));
@@ -882,6 +1174,7 @@ render();
 </html>
 """
     html = html.replace("__MANIFEST__", manifest_safe)
+    html = html.replace("__INITIAL_REVIEW__", initial_review_safe)
     (OUT_DIR / "viewer.html").write_text(html, encoding="utf-8")
 
 
