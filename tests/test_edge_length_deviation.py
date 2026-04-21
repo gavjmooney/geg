@@ -95,7 +95,8 @@ class TestDegenerate:
         assert edge_length_deviation(G) == 1.0
 
     def test_all_zero_length_edges_returns_one(self):
-        """All edges have length 0 → uniform → ELD = 1 (currently divides by 0)."""
+        """All edges have length 0 → uniform → ELD = 1 (guarded by the
+        `ideal == 0` early return in edge_length_deviation)."""
         G = _layout({"a": (0.0, 0.0), "b": (0.0, 0.0), "c": (0.0, 0.0)})
         G.add_edges_from([("a", "b"), ("b", "c")])
         assert edge_length_deviation(G) == pytest.approx(1.0)

@@ -284,6 +284,22 @@ class TestEdgePolylineAdaptiveMode:
         for _, y in poly[1:-1]:
             assert y >= 0
 
+    def test_self_loop_curved_path(self):
+        """source == target (a self-loop with a real curve like `M0,0 Q2,2 0,0`)
+        — both distances from poly[0] to source / target are zero, so the
+        reversal condition `d_start_tgt < d_start_src` must evaluate false
+        (no reversal needed). Resulting polyline should have both endpoints
+        snapped to the shared source/target position and interior samples
+        tracing the curve."""
+        source = target = (5.0, 5.0)
+        poly = P.edge_polyline(source, target, "M5,5 Q7,7 5,5", flatness_tol=0.1)
+        assert poly[0] == source
+        assert poly[-1] == target
+        # Curve actually goes somewhere in between.
+        assert len(poly) >= 3
+        # At least one interior sample should be away from (5, 5).
+        assert any(pt != (5.0, 5.0) for pt in poly[1:-1])
+
 
 class TestMetricsAdaptiveMode:
     """Smoke tests for flatness_fraction on the public metrics. The metric
@@ -432,3 +448,135 @@ class TestScaleInvariance:
             val = metric(G, flatness_fraction=0.005)
             assert math.isfinite(val)
             assert 0.0 <= val <= 1.0
+
+
+class TestTVCGReproduction:
+    """Pin `samples_per_curve=100` (paper §3.2 prescribed, TVCG legacy
+    default) metric values on every curved fixture. Guards against
+    silent drift in the fixed-N code path — a regression there would
+    invalidate comparisons against the published TVCG dataset even
+    though the library's default behaviour is now adaptive.
+
+    The paired `test_*_adaptive_differs_or_matches` checks document
+    where the adaptive default differs from the fixed-N legacy (small
+    EO drift on curves; EC/NEO unchanged because these fixtures have
+    no crossings / occlusion candidates).
+    """
+
+    def _fixture(self, name):
+        from .fixtures._builder import all_fixtures
+        return all_fixtures()[name].build()
+
+    # --- bezier_curve (single Q arc) ---
+    def test_bezier_curve_fixed_N100(self):
+        import geg
+        G = self._fixture("bezier_curve")
+        assert geg.edge_orthogonality(G, samples_per_curve=100) == pytest.approx(0.410706, abs=1e-6)
+        assert geg.edge_crossings(G, samples_per_curve=100) == pytest.approx(1.0)
+        assert geg.node_edge_occlusion(G, samples_per_curve=100) == pytest.approx(1.0)
+
+    def test_bezier_curve_adaptive_drifts_from_fixed(self):
+        import geg
+        G = self._fixture("bezier_curve")
+        adaptive = geg.edge_orthogonality(G)
+        fixed = geg.edge_orthogonality(G, samples_per_curve=100)
+        # Drift is small but nonzero; pin it to catch regressions in the
+        # adaptive code path that would affect non-TVCG corpora.
+        assert abs(adaptive - fixed) < 1e-3, (
+            f"adaptive EO={adaptive:.6f} vs fixed-N=100 EO={fixed:.6f}; "
+            f"drift exceeds the ~2e-4 observed at 2026-04-22 — adaptive "
+            f"sampler behaviour likely changed"
+        )
+
+    # --- cubic_bezier (single C arc) ---
+    def test_cubic_bezier_fixed_N100(self):
+        import geg
+        G = self._fixture("cubic_bezier")
+        assert geg.edge_orthogonality(G, samples_per_curve=100) == pytest.approx(0.383634, abs=1e-6)
+        assert geg.edge_crossings(G, samples_per_curve=100) == pytest.approx(1.0)
+        assert geg.node_edge_occlusion(G, samples_per_curve=100) == pytest.approx(1.0)
+
+    # --- polyline_bend (L segments only — adaptive == fixed-N byte-identical) ---
+    def test_polyline_bend_fixed_and_adaptive_agree(self):
+        import geg
+        G = self._fixture("polyline_bend")
+        fixed = geg.edge_orthogonality(G, samples_per_curve=100)
+        adaptive = geg.edge_orthogonality(G)
+        assert fixed == pytest.approx(1.0)
+        # Line segments are not subdivided in either mode, so the polyline
+        # (and therefore EO) is byte-identical.
+        assert adaptive == fixed
+
+    # --- orthogonal_hv (H/V commands = internally Line under svgpathtools) ---
+    def test_orthogonal_hv_fixed_and_adaptive_agree(self):
+        import geg
+        G = self._fixture("orthogonal_hv")
+        fixed = geg.edge_orthogonality(G, samples_per_curve=100)
+        adaptive = geg.edge_orthogonality(G)
+        assert fixed == pytest.approx(1.0)
+        assert adaptive == fixed
+
+    # --- Every Line-only fixture: adaptive must equal fixed-N exactly ---
+    @pytest.mark.parametrize("fx_name", [
+        "single_edge", "path_stretched", "equilateral_triangle",
+        "unit_square_k4", "diagonal_45", "star_k1_4", "unit_square_cycle",
+        "grid_3x3", "long_edge_path", "pentagon", "polyline_bend",
+        "orthogonal_hv", "disconnected_two_paths", "k5_crossed",
+    ])
+    def test_line_only_fixtures_adaptive_matches_fixed_N(self, fx_name):
+        """On fixtures whose edges are all Lines (M/L/H/V path commands),
+        the adaptive default and the fixed-N opt-in must produce the same
+        polyline — Line segments are never subdivided. Any numerical
+        divergence here indicates a bug in the dispatch or the Line
+        shortcut."""
+        import geg
+        G = self._fixture(fx_name)
+        # EO, EC, NEO should all match bit-for-bit on Line-only graphs.
+        assert geg.edge_orthogonality(G) == geg.edge_orthogonality(G, samples_per_curve=100)
+        assert geg.edge_crossings(G) == geg.edge_crossings(G, samples_per_curve=100)
+        assert geg.node_edge_occlusion(G) == geg.node_edge_occlusion(G, samples_per_curve=100)
+
+
+class TestDispatchPriority:
+    """When both `samples_per_curve` and `flatness_fraction` are passed
+    explicitly, `samples_per_curve` must win (fixed-N opt-in has priority
+    over adaptive). Verifies the dispatch rule documented in every
+    metric's docstring."""
+
+    def _bezier_graph(self):
+        import networkx as nx
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=20.0, y=0.0)
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q10,10 20,0")
+        return G
+
+    def test_edge_orthogonality_samples_per_curve_wins(self):
+        from geg import edge_orthogonality
+        G = self._bezier_graph()
+        # flatness_fraction=0.0001 would give a very tight tol if it won;
+        # samples_per_curve=100 should produce the same as passing it alone.
+        both = edge_orthogonality(G, samples_per_curve=100, flatness_fraction=0.0001)
+        just_fixed = edge_orthogonality(G, samples_per_curve=100)
+        assert both == just_fixed
+
+    def test_edge_crossings_samples_per_curve_wins(self):
+        from geg import edge_crossings
+        G = self._bezier_graph()
+        both = edge_crossings(G, samples_per_curve=100, flatness_fraction=0.0001)
+        just_fixed = edge_crossings(G, samples_per_curve=100)
+        assert both == just_fixed
+
+    def test_node_edge_occlusion_samples_per_curve_wins(self):
+        from geg import node_edge_occlusion
+        G = self._bezier_graph()
+        both = node_edge_occlusion(G, samples_per_curve=100, flatness_fraction=0.0001)
+        just_fixed = node_edge_occlusion(G, samples_per_curve=100)
+        assert both == just_fixed
+
+    def test_curves_promotion_samples_per_curve_wins(self):
+        from geg import curves_promotion
+        G = self._bezier_graph()
+        H_both = curves_promotion(G, samples_per_curve=100, flatness_fraction=0.0001)
+        H_fixed = curves_promotion(G, samples_per_curve=100)
+        assert H_both.number_of_nodes() == H_fixed.number_of_nodes()

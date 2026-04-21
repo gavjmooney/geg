@@ -106,6 +106,78 @@ class TestMetricTable:
             assert value == value, f"{name} is NaN on a clean fixture"
 
 
+class TestComputeMetricsEdgeCases:
+    """compute_metrics must degrade gracefully on pathological inputs — it
+    sits on the batch-CSV hot path, and a crash on one file would kill the
+    whole batch. All metrics guard against empty / degenerate / self-loop
+    / directed / multi graphs by returning a finite [0, 1] value rather
+    than raising; compute_metrics' per-metric try-except catches anything
+    that slips through as NaN. Pin this behaviour explicitly rather than
+    relying on fixture-level happy paths."""
+
+    def test_empty_graph(self, m):
+        import networkx as nx
+        G = nx.Graph()
+        result = m.compute_metrics(G)
+        assert set(result.keys()) == set(m.METRIC_NAMES)
+        # Vacuous graphs: every metric should return 1.0 (best / no issues)
+        # or NaN (if the metric's derivation is genuinely undefined).
+        import math
+        for name, value in result.items():
+            assert value == 1.0 or math.isnan(value), f"{name} = {value}"
+
+    def test_single_node_graph(self, m):
+        import networkx as nx
+        G = nx.Graph(); G.add_node("a", x=0.0, y=0.0)
+        result = m.compute_metrics(G)
+        assert set(result.keys()) == set(m.METRIC_NAMES)
+        import math
+        for name, value in result.items():
+            assert math.isfinite(value) or math.isnan(value), f"{name} = {value}"
+
+    def test_self_loop_with_curve(self, m):
+        """Self-loops are legal in GEG; `a → a` with a curved path should
+        not crash any metric."""
+        import networkx as nx
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "a", polyline=True, path="M0,0 Q2,2 0,0")
+        G.add_edge("a", "b", path="M0,0 L10,0")
+        result = m.compute_metrics(G)
+        import math
+        for name, value in result.items():
+            assert math.isfinite(value) or math.isnan(value), f"{name} = {value}"
+
+    def test_directed_graph_with_curve(self, m):
+        import networkx as nx
+        G = nx.DiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,5 10,0")
+        result = m.compute_metrics(G)
+        # All metrics at least return SOMETHING (no crashes); specifically
+        # EO, EC, NEO, Asp all return finite numbers on a single curved edge.
+        import math
+        for name in ("edge_orthogonality", "edge_crossings",
+                     "node_edge_occlusion", "aspect_ratio"):
+            assert math.isfinite(result[name]), f"{name} not finite"
+
+    def test_multigraph_with_parallel_curves(self, m):
+        """Two parallel curved edges between the same pair of nodes."""
+        import networkx as nx
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,3 10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,-3 10,0")
+        result = m.compute_metrics(G)
+        import math
+        for name in ("edge_orthogonality", "edge_crossings",
+                     "node_edge_occlusion"):
+            assert math.isfinite(result[name]), f"{name} not finite"
+
+
 class TestComputeMetricsSharing:
     """The batch processor must not re-run expensive intermediates that
     several metrics share. Hot spots:
