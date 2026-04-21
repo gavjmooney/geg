@@ -109,29 +109,44 @@ class TestMetricTable:
 class TestComputeMetricsSharing:
     """The batch processor must not re-run expensive intermediates that
     several metrics share. Hot spots:
-      - `get_bounding_box` / `curves_promotion` used by aspect_ratio,
-        node_uniformity, and node_edge_occlusion
+      - `get_bounding_box(G)` (curve-promoted) feeds aspect_ratio.
+      - `get_bounding_box(G, promote=False)` (node-only) feeds
+        node_uniformity and node_edge_occlusion. Only the promoted call
+        runs `curves_promotion`; the node-only path is a cheap scan of
+        node positions.
       - `edge_crossings(return_crossings=True)` returns both the score
-        and the crossings list that `crossing_angle` needs
+        and the crossings list that `crossing_angle` needs.
     """
 
-    def test_get_bounding_box_called_once_per_graph(self, m, monkeypatch):
+    def test_get_bounding_box_called_at_most_twice_per_graph(self, m, monkeypatch):
+        """Once curve-promoted (Asp), once node-only (NU + NEO). The
+        node-only call is O(n) and shared between NU and NEO; the
+        expensive promoted call happens exactly once."""
         import geg as geg_pkg
-        calls = {"n": 0}
+        calls = {"promoted": 0, "node_only": 0}
         original = geg_pkg.get_bounding_box
 
         def counting(G, *args, **kwargs):
-            calls["n"] += 1
+            promote = kwargs.get("promote", True)
+            if len(args) >= 1:
+                promote = args[0]
+            if promote:
+                calls["promoted"] += 1
+            else:
+                calls["node_only"] += 1
             return original(G, *args, **kwargs)
 
         monkeypatch.setattr(m.geg, "get_bounding_box", counting)
 
         G = m.load_drawing(FIXTURES_DIR / "equilateral_triangle.geg")
         m.compute_metrics(G)
-        assert calls["n"] == 1, (
-            f"get_bounding_box was called {calls['n']}× in one compute_metrics; "
-            f"expected 1 (shared between aspect_ratio, node_uniformity, "
-            f"node_edge_occlusion)"
+        assert calls["promoted"] == 1, (
+            f"curve-promoted get_bounding_box was called {calls['promoted']}× "
+            f"(expected 1 — runs curves_promotion, must be shared)"
+        )
+        assert calls["node_only"] == 1, (
+            f"node-only get_bounding_box was called {calls['node_only']}× "
+            f"(expected 1 — shared between NU and NEO)"
         )
 
     def test_edge_crossings_called_once_per_graph(self, m, monkeypatch):

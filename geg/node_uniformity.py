@@ -15,10 +15,17 @@ def node_uniformity(
     score is 1 minus the normalized L1 deviation of per-cell counts from the
     ideal mean N/(rows*cols). Degenerate single-point drawings return 1.0.
 
+    The grid is computed on the **node-position bounding box only** — curves
+    bulging outside the node hull do not stretch the grid. NU is a statement
+    about how evenly the nodes themselves are distributed; including curve
+    samples would dilute cell occupancy counts when a drawing has large
+    curved edges relative to its node spread.
+
     Args:
         G: A NetworkX graph with node coordinates 'x' and 'y'.
-        bbox: Optional pre-computed (min_x, min_y, max_x, max_y). If None,
-            computed via `geg_parser.get_bounding_box(G)`.
+        bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
+            positions. If None, computed via
+            `geg_parser.get_bounding_box(G, promote=False)`.
 
     Returns:
         A float in [0, 1], where higher indicates more uniform distribution.
@@ -29,9 +36,9 @@ def node_uniformity(
     if N <= 1:
         return 1.0
 
-    # Bounding box (includes curves)
+    # Node-only bounding box — curves deliberately excluded.
     if bbox is None:
-        bbox = geg_parser.get_bounding_box(G)
+        bbox = geg_parser.get_bounding_box(G, promote=False)
     x_min, y_min, x_max, y_max = bbox
     width, height = x_max - x_min, y_max - y_min
 

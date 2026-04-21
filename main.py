@@ -116,8 +116,12 @@ def compute_metrics(
     """Compute every metric on `G`, sharing expensive intermediates.
 
     Shared work computed once per call:
-      - `get_bounding_box(G)` — used by `aspect_ratio`, `node_uniformity`,
-        and `node_edge_occlusion`. Internally runs `curves_promotion(G)`.
+      - `get_bounding_box(G)` — curve-promoted bbox used by `aspect_ratio`.
+        Internally runs `curves_promotion(G)`.
+      - `get_bounding_box(G, promote=False)` — node-only bbox used by
+        `node_uniformity` and `node_edge_occlusion` (curves deliberately
+        excluded; NU measures node-placement uniformity and NEO scales ε
+        with node spread, not curve-hull extent).
       - `edge_crossings(G, return_crossings=True)` — gives both the
         `edge_crossings` score and the crossings list that
         `crossing_angle` needs.
@@ -144,6 +148,12 @@ def compute_metrics(
         bbox = None
 
     try:
+        bbox_nodes = geg.get_bounding_box(G, promote=False)
+    except Exception as exc:
+        logging.warning("get_bounding_box(promote=False) failed: %s", exc)
+        bbox_nodes = None
+
+    try:
         ec_score, crossings = geg.edge_crossings(G, return_crossings=True)
     except Exception as exc:
         logging.warning("edge_crossings failed: %s", exc)
@@ -164,9 +174,9 @@ def compute_metrics(
     _safe("edge_orthogonality", lambda: geg.edge_orthogonality(G))
     _safe("kruskal_stress", lambda: geg.kruskal_stress(G, apsp=apsp, weight=weight))
     _safe("neighbourhood_preservation", lambda: geg.neighbourhood_preservation(G))
-    _safe("node_edge_occlusion", lambda: geg.node_edge_occlusion(G, bbox=bbox))
+    _safe("node_edge_occlusion", lambda: geg.node_edge_occlusion(G, bbox=bbox_nodes))
     _safe("node_resolution", lambda: geg.node_resolution(G))
-    _safe("node_uniformity", lambda: geg.node_uniformity(G, bbox=bbox))
+    _safe("node_uniformity", lambda: geg.node_uniformity(G, bbox=bbox_nodes))
     return out
 
 

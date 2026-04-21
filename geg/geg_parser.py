@@ -13,12 +13,11 @@ re-exports below keep existing imports like
 import math
 import re
 import xml.dom.minidom
-from typing import Any, Dict, Hashable, List, Optional, Tuple
+from typing import Optional, Tuple
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 import networkx as nx
 import numpy as np
-import svgpathtools
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import pdist
 
@@ -380,97 +379,7 @@ def to_svg(
     with open(output_file, "w") as f:
         f.write(pretty)
 
-def compute_global_scale(G: nx.Graph, target_segments: int = 10) -> float:
-    """
-    Compute a unit length so the bounding-box diagonal is split into N pieces.
-
-    Args:
-        G: Input graph.
-        target_segments: Desired number of pieces along the diagonal.
-
-    Returns:
-        The target unit length (defaults to 1.0 for degenerate boxes).
-    """
-    xs = [data['x'] for _, data in G.nodes(data=True)]
-    ys = [data['y'] for _, data in G.nodes(data=True)]
-    dx = max(xs) - min(xs)
-    dy = max(ys) - min(ys)
-    diag = math.hypot(dx, dy)
-    # This is the desired length of each little piece:
-    return diag / target_segments if diag > 0 else 1.0
-
-
-def determine_N_for_segment(G: nx.Graph, segment: Any, target_segments: int = 10, min_samples: int = 4, max_samples: int = 500) -> int:
-    """
-    Choose subdivision count for one path segment based on global scale.
-
-    Args:
-        G: Input graph for scale computation.
-        segment: An svgpathtools segment (Line/Bezier/etc.).
-        target_segments: Target number of diagonal pieces for global scale.
-        min_samples: Minimum allowed samples per segment (not enforced here).
-        max_samples: Maximum allowed samples per segment (not enforced here).
-
-    Returns:
-        The chosen number of subsegments N for this segment.
-    """
-    global_scale = compute_global_scale(G, target_segments)
-    seg_len = segment.length(error=1e-5)  # svgpathtools length()
-    # number of pieces = ceil(total_length / piece_length)
-    N = math.ceil(seg_len / global_scale)
-    
-    return N
-    # return max(min_samples, min(N, max_samples))
-
-
-def approximate_edge_polyline(G: nx.Graph, edge: Tuple[Hashable, Hashable, Dict[str, Any]], global_segments_N: int = 10) -> List[Tuple[float, float]]:
-    """
-    Linearize an edge's SVG path into a polyline of sample points.
-
-    Args:
-        G: Input graph for scale and node positions.
-        edge: A tuple (u, v, attrs) describing the edge.
-        global_segments_N: Global scale target for sampling density.
-
-    Returns:
-        A list of (x, y) points including endpoints.
-    """
-    u, v, attrs = edge
-    x0, y0 = G.nodes[u]['x'], G.nodes[u]['y']
-    x1, y1 = G.nodes[v]['x'], G.nodes[v]['y']
-
-    path_str = attrs.get('path', None)
-    if not path_str:
-        return [(x0, y0), (x1, y1)]
-
-    path = svgpathtools.parse_path(path_str)
-    poly = []
-    for seg in path:
-        if isinstance(seg, svgpathtools.Line):
-            pts = [
-                (seg.start.real, seg.start.imag),
-                (seg.end.real,   seg.end.imag)
-            ]
-        else:
-            # pick N based on global and local geometry
-            N = determine_N_for_segment(G, seg, target_segments=global_segments_N)
-            pts = [
-                (seg.point(t).real, seg.point(t).imag)
-                for t in (i / N for i in range(N + 1))
-            ]
-
-        if not poly:
-            poly.extend(pts)
-        else:
-            poly.extend(pts[1:])
-
-    # snap endpoints exactly to node positions
-    if poly:
-        poly[0]  = (x0, y0)
-        poly[-1] = (x1, y1)
-    return poly
-
-def curves_promotion(G: nx.Graph, global_segments_N: int = 10) -> nx.Graph:
+def curves_promotion(G: nx.Graph, samples_per_curve: int = 100) -> nx.Graph:
     """
     Promote curved/polyline edges by splitting them into straight segments.
 
@@ -478,9 +387,14 @@ def curves_promotion(G: nx.Graph, global_segments_N: int = 10) -> nx.Graph:
     copied with is_segment=False. Each curve is approximated with intermediate
     nodes (is_segment=True) connected by straight segments encoded as M/L paths.
 
+    Sampling is delegated to `_paths.flatten_path_to_polyline` at the package-
+    wide default density (100 samples per curved segment) so that the node set
+    of `H` matches the polyline that EO / EC / NEO sample against. Straight
+    `Line` segments are kept as their exact two endpoints.
+
     Args:
         G: Input graph with edge 'path' attributes.
-        global_segments_N: Sampling density used for approximation.
+        samples_per_curve: Samples per non-Line path segment (default 100).
 
     Returns:
         A new graph H with promoted segments.
@@ -512,9 +426,15 @@ def curves_promotion(G: nx.Graph, global_segments_N: int = 10) -> nx.Graph:
             H.add_edge(u, v, **a)
             continue
 
-        # Explode a curved/polyline edge
-        pts = approximate_edge_polyline(G, (u, v, attrs), global_segments_N)
-        # pts[0] and pts[-1] have already been snapped to (u,v)
+        # Explode a curved/polyline edge: sample via the canonical helper
+        # and snap endpoints exactly to the node positions.
+        from ._paths import edge_polyline
+        source = (G.nodes[u]['x'], G.nodes[u]['y'])
+        target = (G.nodes[v]['x'], G.nodes[v]['y'])
+        pts = edge_polyline(
+            source, target, attrs.get('path'),
+            samples_per_curve=samples_per_curve,
+        )
 
         # If the interior is “backwards,” flip it:
         if len(pts) > 2:

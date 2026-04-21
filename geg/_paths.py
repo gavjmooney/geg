@@ -42,7 +42,7 @@ def _sample_segment(seg, n_samples: int) -> List[Point]:
 
 def flatten_path_to_polyline(
     path: "str | Path",
-    samples_per_curve: int = 50,
+    samples_per_curve: int = 100,
 ) -> List[Point]:
     """Flatten a path into a list of (x, y) points tracing the whole path.
 
@@ -62,7 +62,7 @@ def flatten_path_to_polyline(
 
 def flatten_path_to_segments(
     path: "str | Path",
-    samples_per_curve: int = 50,
+    samples_per_curve: int = 100,
 ) -> List[Segment2D]:
     """Flatten a path into a list of consecutive line segments.
 
@@ -91,7 +91,7 @@ def edge_polyline(
     source: Point,
     target: Point,
     path_str: Optional[str],
-    samples_per_curve: int = 50,
+    samples_per_curve: int = 100,
 ) -> List[Point]:
     """Convenience: an edge's path flattened to a polyline with endpoints
     snapped exactly to `source` and `target`.

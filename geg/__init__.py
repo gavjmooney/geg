@@ -9,8 +9,7 @@ from .geg_parser import (
     contains_polylines, contains_curves, contains_straight_bends,
     has_self_loops_file, has_self_loops_graph,
     is_multigraph_file, is_multigraph_graph,
-    curves_promotion, approximate_edge_polyline,
-    compute_global_scale, determine_N_for_segment,
+    curves_promotion,
     get_convex_hull_area,
 )
 
@@ -51,8 +50,7 @@ __all__ = [
     "contains_polylines","contains_curves","contains_straight_bends",
     "has_self_loops_file","has_self_loops_graph",
     "is_multigraph_file","is_multigraph_graph",
-    "curves_promotion","approximate_edge_polyline",
-    "compute_global_scale","determine_N_for_segment",
+    "curves_promotion",
     "get_convex_hull_area",
     # metrics
     "aspect_ratio","angular_resolution","angular_resolution_min_angle","angular_resolution_avg_angle",

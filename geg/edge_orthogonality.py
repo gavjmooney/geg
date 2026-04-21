@@ -51,7 +51,7 @@ def _edge_deviation(poly) -> float:
     return delta
 
 
-def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 50) -> float:
+def edge_orthogonality(G: nx.Graph, samples_per_curve: int = 100) -> float:
     """Edge orthogonality metric in [0, 1], per paper §3.2 eq. (5)-(6).
 
     Each edge is treated as a polyline: straight edges are a single segment,

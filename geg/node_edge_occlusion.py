@@ -88,7 +88,7 @@ def _segment_point_distance(
 def node_edge_occlusion(
     G: nx.Graph,
     epsilon_fraction: float = 0.02,
-    samples_per_curve: int = 50,
+    samples_per_curve: int = 100,
     *,
     bbox: Optional[Tuple[float, float, float, float]] = None,
 ) -> float:
@@ -104,8 +104,12 @@ def node_edge_occlusion(
             overlap).
         samples_per_curve: Curve-sampling density used to flatten Bezier
             segments into straight pieces before the distance test.
-        bbox: Optional pre-computed (min_x, min_y, max_x, max_y). If None,
-            computed via `get_bounding_box(G)`.
+        bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
+            positions. If None, computed via
+            `get_bounding_box(G, promote=False)`. NEO uses the node-only
+            bbox so the penalty zone `epsilon_fraction * diag` scales with
+            how far apart the nodes sit, not with how far a curved edge
+            strays from its endpoints.
 
     Returns:
         Float in [0, 1]. Returns 1.0 for degenerate graphs (fewer than two
@@ -126,7 +130,7 @@ def node_edge_occlusion(
         return 1.0
 
     if bbox is None:
-        bbox = get_bounding_box(G)
+        bbox = get_bounding_box(G, promote=False)
     min_x, min_y, max_x, max_y = bbox
     diag = math.hypot(max_x - min_x, max_y - min_y)
     if diag < 1e-9:
