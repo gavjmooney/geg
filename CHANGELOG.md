@@ -2,6 +2,71 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — `dev/adaptive-curvature-sampling`
+
+Opt-in curvature-aware path flattening. Fixed-N sampling (the 0.2.0
+default) is unchanged; the new mode is activated per-call via a
+`flatness_fraction` kwarg on the metrics. Paper §3.2 conformance is
+preserved in the default path. Motivation: tight curves under-sample
+at fixed N=100 per segment while nearly-straight curves over-sample;
+adaptive flattening pushes samples where they're needed and skips
+regions that are already flat within tolerance. This branch deviates
+from the paper — the library's purpose on this track is an updated
+metric set, not strict reproduction.
+
+### Added
+
+- **`_paths.flatten_path_adaptive(path, flatness_tol, max_depth=16)`** —
+  curvature-aware flattener using midpoint-to-chord subdivision. Each
+  non-Line segment is recursively split at `t=0.5` until the midpoint
+  of the curve lies within `flatness_tol` of the chord connecting the
+  current endpoints; highly curved regions recurse deeper, nearly-
+  straight regions terminate after one check. Line segments are kept
+  as their two endpoints (same invariant as `flatten_path_to_polyline`).
+  `max_depth` caps recursion at `2^max_depth` sub-segments per curve
+  segment (default 16 — generous for well-behaved curves, guards
+  against pathological zero-area loops).
+- **`_paths._point_to_segment_distance(px, py, ax, ay, bx, by)`** —
+  internal geometric primitive used by the flatness test (perpendicular
+  distance from a point to the infinite line through two other points;
+  degenerate zero-length "segment" collapses to point-to-point).
+- **`edge_polyline(..., flatness_tol=None, max_depth=16)`** — the
+  convenience wrapper now dispatches on `flatness_tol`: when set,
+  adaptive mode; when `None`, the existing fixed-N behaviour is kept
+  byte-identical.
+- **Metric kwargs:** `edge_crossings(..., flatness_fraction=None)`,
+  `edge_orthogonality(..., flatness_fraction=None)`,
+  `node_edge_occlusion(..., flatness_fraction=None)`, and
+  `curves_promotion(G, ..., flatness_fraction=None)`. When set, the
+  metric converts to an absolute tolerance `flatness_fraction ·
+  node_bbox_diagonal` and switches to adaptive mode. `samples_per_curve`
+  is ignored in that branch. Typical values: `0.001`–`0.005` (0.1–0.5%
+  of the drawing's diagonal).
+
+### Trade-offs
+
+- Adaptive output is non-uniform along the curve; fixed-N output has a
+  predictable sample count per segment. Metrics that assume uniform
+  arc-length spacing (none of the current set do) would need to
+  reconsider.
+- For drawings dominated by mild curves, adaptive mode produces
+  **dramatically fewer samples** than N=100 per segment, speeding up
+  EC's O(edges²) segment-pair comparison. For drawings with tight
+  curves (high curvature per unit length), adaptive can produce
+  **more** samples than fixed — it's paying the curvature its due.
+- Deviates from paper §3.2's 100-samples prescription. Fine on this
+  branch; not acceptable for TVCG-reproduction work (stay on 0.2.0
+  default for that).
+
+### Still to decide
+
+- Whether to flip the default from fixed-N to adaptive in a future
+  release. Requires an empirical re-run on a curved-drawing corpus to
+  quantify the metric-value drift. TVCG corpus is straight-line so
+  this isn't gated on that dataset.
+
+---
+
 ## [0.2.0] — 2026-04-21 (`dev/metrics-refactor-tdd`)
 
 TDD refactor of the metrics library against the GD 2025 paper definitions (paper §3.2, §3.3), plus a parser/I/O cleanup. Per-fixture value deltas against the previous release are in `METRIC_DELTAS.md`; known-issue catalogue is in `ISSUES.md`.

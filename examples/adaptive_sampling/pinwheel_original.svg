@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="600.0" viewBox="-240.0 -240.0 480.0 480.0">
+  <text x="-230.0" y="-220.0" font-family="monospace" font-size="13.58" fill="#999999">ORIGINAL</text>
+  <path d="M0,0 Q60.0,42.0 120.0,0.0" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q12.727922061357859,72.12489168102785 84.8528137423857,84.8528137423857" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q-41.99999999999999,60.00000000000001 7.34788079488412e-15,120.0" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q-72.12489168102785,12.727922061357859 -84.85281374238569,84.8528137423857" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q-60.00000000000001,-41.99999999999999 -120.0,1.469576158976824e-14" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q-12.727922061357873,-72.12489168102785 -84.85281374238572,-84.85281374238569" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q41.999999999999986,-60.00000000000001 -2.2043642384652355e-14,-120.0" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <path d="M0,0 Q72.12489168102783,-12.727922061357873 84.85281374238568,-84.85281374238572" fill="none" stroke="#1f77b4" stroke-width="2.304"/>
+  <circle cx="0.000" cy="0.000" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="120.000" cy="0.000" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="84.853" cy="84.853" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="0.000" cy="120.000" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="-84.853" cy="84.853" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="-120.000" cy="0.000" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="-84.853" cy="-84.853" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="-0.000" cy="-120.000" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+  <circle cx="84.853" cy="-84.853" r="5.760" fill="#ffffff" stroke="#000000" stroke-width="1.440"/>
+</svg>

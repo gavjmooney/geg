@@ -379,7 +379,12 @@ def to_svg(
     with open(output_file, "w") as f:
         f.write(pretty)
 
-def curves_promotion(G: nx.Graph, samples_per_curve: int = 100) -> nx.Graph:
+def curves_promotion(
+    G: nx.Graph,
+    samples_per_curve: int = 100,
+    *,
+    flatness_fraction: Optional[float] = None,
+) -> nx.Graph:
     """
     Promote curved/polyline edges by splitting them into straight segments.
 
@@ -387,18 +392,42 @@ def curves_promotion(G: nx.Graph, samples_per_curve: int = 100) -> nx.Graph:
     copied with is_segment=False. Each curve is approximated with intermediate
     nodes (is_segment=True) connected by straight segments encoded as M/L paths.
 
-    Sampling is delegated to `_paths.flatten_path_to_polyline` at the package-
-    wide default density (100 samples per curved segment) so that the node set
+    Sampling is delegated to `_paths.edge_polyline` at the package-wide
+    default density (100 samples per curved segment) so that the node set
     of `H` matches the polyline that EO / EC / NEO sample against. Straight
     `Line` segments are kept as their exact two endpoints.
 
+    Flattening mode:
+      - `flatness_fraction` unset (default): fixed-N mode — every non-Line
+        segment gets `samples_per_curve` samples.
+      - `flatness_fraction` set: adaptive curvature-aware mode — tolerance
+        is `flatness_fraction · node_bbox_diagonal`. Highly curved segments
+        get more intermediate nodes; nearly-straight segments get fewer.
+
     Args:
         G: Input graph with edge 'path' attributes.
-        samples_per_curve: Samples per non-Line path segment (default 100).
+        samples_per_curve: Fixed-N samples per non-Line segment (default 100,
+            ignored when flatness_fraction is set).
+        flatness_fraction: Adaptive-mode tolerance as a fraction of the node
+            bbox diagonal.
 
     Returns:
         A new graph H with promoted segments.
     """
+    flatness_tol: Optional[float] = None
+    if flatness_fraction is not None:
+        # Node-bbox diagonal — we're choosing sampling density for curves,
+        # which depends on the drawing's scale. Using the curve-promoted bbox
+        # here would be circular (we're about to promote).
+        xs = [data['x'] for _, data in G.nodes(data=True)]
+        ys = [data['y'] for _, data in G.nodes(data=True)]
+        if xs and ys:
+            dx = max(xs) - min(xs)
+            dy = max(ys) - min(ys)
+            node_diag = math.hypot(dx, dy)
+            flatness_tol = flatness_fraction * node_diag if node_diag > 0 else 1.0
+        else:
+            flatness_tol = 1.0
     # Make H of the same type as G
     if G.is_multigraph():
         H = nx.MultiDiGraph() if G.is_directed() else nx.MultiGraph()
@@ -434,6 +463,7 @@ def curves_promotion(G: nx.Graph, samples_per_curve: int = 100) -> nx.Graph:
         pts = edge_polyline(
             source, target, attrs.get('path'),
             samples_per_curve=samples_per_curve,
+            flatness_tol=flatness_tol,
         )
 
         # If the interior is “backwards,” flip it:

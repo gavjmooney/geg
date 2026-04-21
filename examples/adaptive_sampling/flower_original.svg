@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="559.8076211353316" viewBox="-200.0 -186.60254037844385 400.0 373.20508075688775">
+  <text x="-190.0" y="-166.60254037844385" font-family="monospace" font-size="10.94" fill="#999999">ORIGINAL</text>
+  <path d="M0,0 C49.14912265733951,34.41458618106276 90.1701754685321,6.882917236212553 100.0,0.0" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <path d="M0,0 C-5.229344564859481,59.771681885504734 39.12430655556021,81.53112123755547 50.000000000000014,86.60254037844386" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <path d="M0,0 C-54.378467222198985,25.357095704441992 -51.045868912971876,74.64820400134293 -49.99999999999998,86.60254037844388" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <path d="M0,0 C-49.14912265733951,-34.41458618106277 -90.17017546853211,-6.882917236212544 -100.0,1.2246467991473532e-14" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <path d="M0,0 C5.229344564859473,-59.771681885504734 -39.12430655556024,-81.53112123755547 -50.00000000000004,-86.60254037844385" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <path d="M0,0 C54.378467222199006,-25.357095704441953 51.04586891297191,-74.64820400134292 50.000000000000014,-86.60254037844386" fill="none" stroke="#1f77b4" stroke-width="1.920"/>
+  <circle cx="0.000" cy="0.000" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="100.000" cy="0.000" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="50.000" cy="86.603" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="-50.000" cy="86.603" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="-100.000" cy="0.000" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="-50.000" cy="-86.603" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+  <circle cx="50.000" cy="-86.603" r="4.800" fill="#ffffff" stroke="#000000" stroke-width="1.200"/>
+</svg>
