@@ -1,6 +1,6 @@
 # Adaptive curvature-aware sampling — visual showcase
 
-Paired SVGs demonstrating `geg._paths.flatten_path_adaptive` on five
+Paired SVGs demonstrating `geg._paths.flatten_path_adaptive` on nine
 curve-heavy drawings. For each drawing:
 
 - `{name}_original.svg` — the true SVG path (Q / C arcs), rendered
@@ -28,6 +28,9 @@ python -m examples.adaptive_sampling.generate
 | `tangled_s` | Four deliberately tight cubic S-curves crossing through a common region. **Inflection points are where the extra density lands** — the sampler spends its budget where curvature sign flips, not where the curve is monotonic. |
 | `flow_network` | Mixed-curvature flow diagram: some gentle connectors between "hidden-layer" nodes get just 2-3 samples, while the dramatic U-turn from output back to input is densely sampled. |
 | `signature` | A **single compound path** interleaving 5 straight `L` segments with 4 Beziers of varying curvature (gentle Q, tight C S-curve, mild Q, shallow C). Shows that within one path: Line segments stay as 2 points, and each non-Line segment is flattened adaptively and independently — a tight cubic gets many samples while an adjacent gentle arc gets only a handful. |
+| `dual_arc` | Two edges on the same drawing — one with a big sweeping Q curve (chord 1000, sagitta 250), one with a tiny Q curve (chord 20, sagitta 5). **Simplest demonstration of multi-scale behaviour.** Big arc → 9 samples; tiny arc → 2 (collapses to a straight line). The tiny arc is visually insignificant at the drawing's absolute tolerance (0.005 × bbox_diag ≈ 5 units ≈ its sagitta), so the sampler correctly treats it as straight. |
+| `concentric_arcs` | Four self-similar Q arcs (all sagitta = 0.3 × chord) with chord lengths in a geometric progression 32 → 100 → 320 → 1000. Because tolerance is absolute (graph units), smaller arcs are held to a looser *relative* accuracy than larger ones → sample counts **3 / 5 / 7 / 9** across the sequence. The sampler's budget tracks visual significance in the drawing, not chord-relative curvature. |
+| `metropolitan` | Three "cities" far apart connected by long curved "highways", plus a tight local cluster of 4 nodes (short curved "streets") near one city. Highways → 9 samples each; streets → 3; the tightest street-to-centre connector → 2. Shows the sampler distributing its budget across feature sizes spanning more than an order of magnitude within a single realistic graph. |
 
 ## Reading the sampled SVGs
 
@@ -52,6 +55,9 @@ at sharp corners. Adaptive flattening redirects that budget.
 | `tangled_s` | 4 | 60 |
 | `flow_network` | 10 | 41 |
 | `signature` | 4 (in a single 9-segment path) | 26 |
+| `dual_arc` | 2 | 11 |
+| `concentric_arcs` | 4 | 24 |
+| `metropolitan` | 8 | 41 |
 
 For comparison, fixed-N at `samples_per_curve = 100` would produce
 400 / 600 / 800 / 400 / 1000 / 400 points respectively — one to two

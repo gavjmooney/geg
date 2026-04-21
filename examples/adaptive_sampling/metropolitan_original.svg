@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="469.87951807228916" viewBox="-315.0 -355.0 1660.0 1300.0">
+  <text x="-305.0" y="-335.0" font-family="monospace" font-size="42.17" fill="#999999">ORIGINAL</text>
+  <path d="M100,500 C300,200 700,200 900,500" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M100,500 C100,300 350,80 500,60" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M900,500 C900,300 650,80 500,60" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M900,500 Q880,480 870,470" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M870,470 Q900,460 930,470" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M870,530 Q860,500 870,470" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M930,470 Q940,500 930,530" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <path d="M930,530 Q900,540 870,530" fill="none" stroke="#1f77b4" stroke-width="7.968"/>
+  <circle cx="100.000" cy="500.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="900.000" cy="500.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="500.000" cy="60.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="870.000" cy="470.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="930.000" cy="470.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="930.000" cy="530.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+  <circle cx="870.000" cy="530.000" r="19.920" fill="#ffffff" stroke="#000000" stroke-width="4.980"/>
+</svg>

@@ -201,13 +201,85 @@ def build_signature() -> nx.Graph:
     return G
 
 
+def build_dual_arc() -> nx.Graph:
+    """Two edges on the same drawing — one with a big sweeping arc, one
+    with a tiny arc near the midpoint. Simplest demonstration of
+    adaptive sampling's response to multi-scale features in a single
+    graph. flatness_tol = 0.005 × node-bbox-diag ≈ 5 graph units.
+    """
+    G = nx.Graph()
+    _add_node(G, "a",    0.0, 200.0)
+    _add_node(G, "b", 1000.0, 200.0)
+    _add_node(G, "c",  490.0, 270.0)
+    _add_node(G, "d",  510.0, 270.0)
+    # Big arc: chord length 1000, peaks ~250 units off the chord.
+    _add_edge(G, "a", "b", "M0,200 Q500,-300 1000,200")
+    # Tiny arc: chord length 20, peaks ~5 units off the chord.
+    _add_edge(G, "c", "d", "M490,270 Q500,260 510,270")
+    return G
+
+
+def build_concentric_arcs() -> nx.Graph:
+    """Four Q arcs sharing the same self-similar shape (sagitta = 30 % of
+    chord) but with chord lengths in a geometric progression spanning
+    ~30× (32 → 1000). Adaptive flattening should produce a similar
+    sample count per arc — curvature relative to chord is identical, so
+    the per-sub-interval flatness test terminates at the same depth —
+    while fixed-N=100 would waste the same 100 samples on every arc
+    regardless of its visual size.
+    """
+    G = nx.Graph()
+    chords = [32.0, 100.0, 320.0, 1000.0]
+    for i, L in enumerate(chords):
+        y = 120.0 * i
+        x0 = (1000.0 - L) / 2.0
+        x1 = x0 + L
+        _add_node(G, f"L{i}", x0, y)
+        _add_node(G, f"R{i}", x1, y)
+        cx, cy = (x0 + x1) / 2.0, y - 0.6 * L  # peak at sagitta = 0.3 · L
+        _add_edge(G, f"L{i}", f"R{i}", f"M{x0},{y} Q{cx},{cy} {x1},{y}")
+    return G
+
+
+def build_metropolitan() -> nx.Graph:
+    """Mixed-scale realistic graph: three 'cities' far apart connected by
+    long curved 'highways', plus a tight local cluster near one of them
+    (short curved 'streets'). The sampler distributes its budget sensibly
+    across features that differ in size by more than an order of magnitude
+    within the same drawing.
+    """
+    G = nx.Graph()
+    _add_node(G, "C1", 100.0, 500.0)
+    _add_node(G, "C2", 900.0, 500.0)
+    _add_node(G, "C3", 500.0,  60.0)
+    _add_node(G, "L1", 870.0, 470.0)
+    _add_node(G, "L2", 930.0, 470.0)
+    _add_node(G, "L3", 930.0, 530.0)
+    _add_node(G, "L4", 870.0, 530.0)
+    # Highways (long cubic curves between cities).
+    _add_edge(G, "C1", "C2", "M100,500 C300,200 700,200 900,500")
+    _add_edge(G, "C1", "C3", "M100,500 C100,300 350,80 500,60")
+    _add_edge(G, "C2", "C3", "M900,500 C900,300 650,80 500,60")
+    # Streets (tight local Q curves inside the cluster).
+    _add_edge(G, "L1", "L2", "M870,470 Q900,460 930,470")
+    _add_edge(G, "L2", "L3", "M930,470 Q940,500 930,530")
+    _add_edge(G, "L3", "L4", "M930,530 Q900,540 870,530")
+    _add_edge(G, "L4", "L1", "M870,530 Q860,500 870,470")
+    # One link from city centre into the cluster.
+    _add_edge(G, "C2", "L1", "M900,500 Q880,480 870,470")
+    return G
+
+
 DRAWINGS: Dict[str, Callable[[], nx.Graph]] = {
-    "sine_wave":    build_sine_wave,
-    "flower":       build_flower,
-    "pinwheel":     build_pinwheel,
-    "tangled_s":    build_tangled_s,
-    "flow_network": build_flow_network,
-    "signature":    build_signature,
+    "sine_wave":        build_sine_wave,
+    "flower":           build_flower,
+    "pinwheel":         build_pinwheel,
+    "tangled_s":        build_tangled_s,
+    "flow_network":     build_flow_network,
+    "signature":        build_signature,
+    "dual_arc":         build_dual_arc,
+    "concentric_arcs":  build_concentric_arcs,
+    "metropolitan":     build_metropolitan,
 }
 
 
