@@ -197,6 +197,117 @@ class TestBiconnectedComponents:
         assert gp.n_biconnected_components(G) == 1
 
 
+class TestCrossingNumberLowerBounds:
+    """Both properties are O(1) arithmetic on (n, m) and have closed-form
+    expected values — no floating-point tolerance required.
+
+    Derivations:
+        euler_lb     = max(0, m - (3n - 6))   for n >= 3 else 0
+        bipartite_lb = max(0, m - (2n - 4))   for bipartite, n >= 3; NaN otherwise
+
+    For K5 and K{3,3} the bounds are also the actual crossing numbers
+    (both well-known results), which is a strong sign-error check.
+    """
+
+    # --- Euler bound ---
+
+    def test_euler_k4_planar(self):
+        # K4: n=4, m=6 -> max(0, 6 - 6) = 0 (K4 is planar).
+        assert gp.crossing_number_lb_euler(nx.complete_graph(4)) == 0
+
+    def test_euler_k5(self):
+        # K5: n=5, m=10 -> max(0, 10 - 9) = 1. Matches cr(K5) = 1.
+        assert gp.crossing_number_lb_euler(nx.complete_graph(5)) == 1
+
+    def test_euler_k6(self):
+        # K6: n=6, m=15 -> max(0, 15 - 12) = 3.
+        assert gp.crossing_number_lb_euler(nx.complete_graph(6)) == 3
+
+    def test_euler_k7(self):
+        # K7: n=7, m=21 -> max(0, 21 - 15) = 6.
+        assert gp.crossing_number_lb_euler(nx.complete_graph(7)) == 6
+
+    def test_euler_tree_is_zero(self):
+        # Any tree has m = n - 1 < 3n - 6 for n >= 3 -> bound is 0.
+        assert gp.crossing_number_lb_euler(nx.path_graph(10)) == 0
+        assert gp.crossing_number_lb_euler(nx.star_graph(6)) == 0
+
+    def test_euler_k33_below_budget(self):
+        # K{3,3}: n=6, m=9 -> max(0, 9 - 12) = 0 (Euler bound is loose
+        # here; the tighter bipartite bound catches this one).
+        assert gp.crossing_number_lb_euler(nx.complete_bipartite_graph(3, 3)) == 0
+
+    def test_euler_n_lt_3(self):
+        # n < 3: bound is vacuous; return 0.
+        assert gp.crossing_number_lb_euler(nx.Graph()) == 0
+        single = nx.Graph(); single.add_node(0)
+        assert gp.crossing_number_lb_euler(single) == 0
+        edge = nx.Graph(); edge.add_edge(0, 1)
+        assert gp.crossing_number_lb_euler(edge) == 0
+
+    def test_euler_returns_int(self):
+        assert isinstance(gp.crossing_number_lb_euler(nx.complete_graph(5)), int)
+
+    # --- Bipartite bound ---
+
+    def test_bipartite_k33(self):
+        # K{3,3}: n=6, m=9 -> max(0, 9 - 8) = 1. Matches cr(K{3,3}) = 1.
+        assert gp.crossing_number_lb_bipartite(nx.complete_bipartite_graph(3, 3)) == 1
+
+    def test_bipartite_k44(self):
+        # K{4,4}: n=8, m=16 -> max(0, 16 - 12) = 4.
+        assert gp.crossing_number_lb_bipartite(nx.complete_bipartite_graph(4, 4)) == 4
+
+    def test_bipartite_k55(self):
+        # K{5,5}: n=10, m=25 -> max(0, 25 - 16) = 9.
+        assert gp.crossing_number_lb_bipartite(nx.complete_bipartite_graph(5, 5)) == 9
+
+    def test_bipartite_tree_is_zero(self):
+        # Trees are bipartite; m = n-1 is well below 2n - 4 for n >= 3.
+        assert gp.crossing_number_lb_bipartite(nx.path_graph(10)) == 0
+
+    def test_bipartite_non_bipartite_is_nan(self):
+        # K5 has odd cycles (triangles) -> not bipartite -> NaN.
+        assert math.isnan(gp.crossing_number_lb_bipartite(nx.complete_graph(5)))
+        # Petersen has 5-cycles -> not bipartite either.
+        assert math.isnan(gp.crossing_number_lb_bipartite(nx.petersen_graph()))
+
+    def test_bipartite_cycle_even_vs_odd(self):
+        # C4 is bipartite -> real bound; C5 is not -> NaN.
+        assert gp.crossing_number_lb_bipartite(nx.cycle_graph(4)) == 0
+        assert math.isnan(gp.crossing_number_lb_bipartite(nx.cycle_graph(5)))
+
+    def test_bipartite_empty_and_singleton(self):
+        # Empty and single-node graphs are vacuously bipartite; bound is 0.
+        assert gp.crossing_number_lb_bipartite(nx.Graph()) == 0
+        single = nx.Graph(); single.add_node(0)
+        assert gp.crossing_number_lb_bipartite(single) == 0
+
+    # --- PROPERTY_NAMES / compute_properties wiring ---
+
+    def test_listed_in_property_names(self):
+        assert "crossing_number_lb_euler" in gp.PROPERTY_NAMES
+        assert "crossing_number_lb_bipartite" in gp.PROPERTY_NAMES
+
+    def test_property_names_ends_with_new_entries(self):
+        # CSV-join stability: both must be at the end of the list so older
+        # consumers joined on prior column order still align.
+        assert gp.PROPERTY_NAMES[-2:] == [
+            "crossing_number_lb_euler",
+            "crossing_number_lb_bipartite",
+        ]
+
+    def test_compute_properties_includes_bounds(self):
+        props = gp.compute_properties(nx.complete_graph(5))
+        assert props["crossing_number_lb_euler"] == 1
+        assert math.isnan(props["crossing_number_lb_bipartite"])  # K5 non-bipartite
+
+    def test_compute_properties_k33(self):
+        props = gp.compute_properties(nx.complete_bipartite_graph(3, 3))
+        assert props["crossing_number_lb_euler"] == 0
+        assert props["crossing_number_lb_bipartite"] == 1
+
+
 # ---------- distances (per-component weighted sum) ----------
 
 class TestDistances:

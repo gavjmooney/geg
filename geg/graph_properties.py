@@ -218,6 +218,46 @@ def n_biconnected_components(G: nx.Graph) -> int:
     return sum(1 for _ in nx.biconnected_components(UG))
 
 
+# ---------- analytic crossing-number lower bounds ----------
+
+def crossing_number_lb_euler(G: nx.Graph) -> int:
+    """Euler's lower bound on the crossing number of a simple graph.
+
+    Simple planar graphs with n >= 3 satisfy m <= 3n - 6. Every edge
+    exceeding that budget must cross another edge, so
+
+        cr(G) >= max(0, m - (3n - 6)).
+
+    Returns 0 when the graph is planar-feasible (or n < 3, where the
+    bound is vacuous). Independent of any embedding / layout — purely
+    structural.
+    """
+    n, m = G.number_of_nodes(), G.number_of_edges()
+    if n < 3:
+        return 0
+    return max(0, m - (3 * n - 6))
+
+
+def crossing_number_lb_bipartite(G: nx.Graph) -> float:
+    """Euler's bound sharpened for bipartite simple graphs.
+
+    Every cycle in a bipartite graph has length >= 4, tightening Euler's
+    inequality to m <= 2n - 4 for n >= 3. So for bipartite G
+
+        cr(G) >= max(0, m - (2n - 4)).
+
+    Returns NaN on non-bipartite graphs so downstream cohort filters can
+    distinguish "bound is 0" from "bound not applicable" — the caller
+    should fall back to `crossing_number_lb_euler` in that case.
+    """
+    if not nx.is_bipartite(G):
+        return float("nan")
+    n, m = G.number_of_nodes(), G.number_of_edges()
+    if n < 3:
+        return 0
+    return max(0, m - (2 * n - 4))
+
+
 # ---------- distances (per-component aggregation) ----------
 
 def compute_apsp(G: nx.Graph, weight: Optional[str] = None) -> Apsp:
@@ -377,6 +417,9 @@ PROPERTY_NAMES: List[str] = [
     "n_triangles", "average_clustering", "transitivity",
     # assortativity
     "degree_assortativity",
+    # analytic crossing-number lower bounds (appended last to keep CSV
+    # columns stable for consumers joined against older rows)
+    "crossing_number_lb_euler", "crossing_number_lb_bipartite",
 ]
 
 
