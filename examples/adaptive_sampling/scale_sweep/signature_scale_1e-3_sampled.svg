@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="300.0" viewBox="-0.15 -0.15 0.6 0.3">
+  <text x="9.85" y="-0.13430280279795148" font-family="monospace" font-size="0.01" fill="#555555">scale=1e-3  26 pts</text>
+  <text x="9.85" y="-0.11739812888805307" font-family="monospace" font-size="0.01" fill="#999999">EO=0.606268  EC=1.000000  NEO=1.000000</text>
+  <path d="M0,0 L0.03,0 L0.0375,-0.016875 L0.045,-0.0225 L0.0525,-0.016875 L0.06,0 L0.09,0 L0.094609375,-0.01353515625 L0.100625,-0.01546875 L0.115,-1.387778781e-17 L0.129375,0.01546875 L0.135390625,0.01353515625 L0.14,-2.775557562e-17 L0.17,0 L0.1775,0.0075 L0.185,0.01 L0.1925,0.0075 L0.2,0 L0.23,0 L0.2341796875,-0.0044296875 L0.2390625,-0.0050625 L0.25,0 L0.2609375,0.0050625 L0.2658203125,0.0044296875 L0.27,0 L0.3,0" fill="none" stroke="#555555" stroke-width="0.00288"/>
+  <circle cx="0.03" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.0375" cy="-0.016875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.045" cy="-0.0225" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.0525" cy="-0.016875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.06" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.09" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.094609375" cy="-0.01353515625" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.100625" cy="-0.01546875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.115" cy="-1.387778781e-17" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.129375" cy="0.01546875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.135390625" cy="0.01353515625" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.14" cy="-2.775557562e-17" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.17" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.1775" cy="0.0075" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.185" cy="0.01" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.1925" cy="0.0075" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.2" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.23" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.2341796875" cy="-0.0044296875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.2390625" cy="-0.0050625" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.25" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.2609375" cy="0.0050625" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.2658203125" cy="0.0044296875" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.27" cy="0" r="0.00252" fill="#e74c3c" stroke="none"/>
+  <circle cx="0.000" cy="0.000" r="0.007" fill="#ffffff" stroke="#000000" stroke-width="0.002"/>
+  <circle cx="0.300" cy="0.000" r="0.007" fill="#ffffff" stroke="#000000" stroke-width="0.002"/>
+</svg>

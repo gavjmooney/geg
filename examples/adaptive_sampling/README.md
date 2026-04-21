@@ -60,3 +60,30 @@ mild, and only slightly more on graphs with tight curves. The
 `signature` row is particularly telling: a 9-segment path with 5
 Lines and 4 Beziers collapses from 400 samples (100 per curve) to
 26 (straight pieces stay as 2 points; each curve gets 3-8).
+
+## Manual scale-invariance check
+
+`scale_sweep/` contains the same `signature` drawing rendered at four
+different coordinate scales spanning **nine orders of magnitude**:
+
+| File prefix | Coordinate range | `flatness_tol` |
+|---|---|---|
+| `signature_scale_1e-3` | `[0, 0.3]` | 0.0015 |
+| `signature_scale_1`    | `[0, 300]` | 1.5 |
+| `signature_scale_1e3`  | `[0, 300 000]` | 1 500 |
+| `signature_scale_1e6`  | `[0, 300 000 000]` | 1 500 000 |
+
+Both the SVG layout (600 × 300 canvas) and the `flatness_fraction = 0.005`
+parameter are scale-proportional, so the four sampled SVGs should look
+**pixel-identical** — same 24 red sample dots, same polyline topology,
+same EO / EC / NEO readout in the header. Opening them side by side is
+the visual proof of scale invariance.
+
+Programmatic check:
+
+```
+max polyline drift (after normalising by k) across scales: 2.8e-14
+```
+
+Float-epsilon-level agreement. Any perceptible difference between the
+four SVGs is a regression.

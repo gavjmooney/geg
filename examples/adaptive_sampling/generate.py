@@ -223,12 +223,18 @@ SVG_HEADER = (
 def _layout(G: nx.Graph) -> Dict[str, float]:
     """Pick a canvas that comfortably contains node positions plus a margin
     generous enough to fit typical curve excursions (we don't promote here;
-    curves frequently reach outside the node hull, so we pad generously)."""
+    curves frequently reach outside the node hull, so we pad generously).
+
+    Padding is proportional to the drawing's own extent so the layout stays
+    scale-invariant: a graph in [0, 0.001] lays out the same way as one in
+    [0, 1e6]. The only floor is for fully-degenerate (zero-extent) cases,
+    which only happen when every node shares a position."""
     xs = [d["x"] for _, d in G.nodes(data=True)]
     ys = [d["y"] for _, d in G.nodes(data=True)]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
-    pad = 0.5 * max(max_x - min_x, max_y - min_y, 1.0)
+    extent = max(max_x - min_x, max_y - min_y)
+    pad = 0.5 * (extent if extent > 0 else 1.0)
     return {
         "min_x": min_x - pad,
         "min_y": min_y - pad,
@@ -340,6 +346,124 @@ def render_sampled(G: nx.Graph, path: Path, flatness_tol: float) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _scale_signature(k: float) -> nx.Graph:
+    """Signature drawing with every coordinate multiplied by `k`. The
+    flatness_fraction mechanism should produce bit-identical polylines
+    (modulo the scale factor) — this is the visual proof of scale
+    invariance."""
+    import re
+    G = build_signature()
+    # Scale node positions.
+    for _, attrs in G.nodes(data=True):
+        attrs["x"] *= k
+        attrs["y"] *= k
+    # Scale every numeric literal in the path string.
+    def scale_literal(m: re.Match) -> str:
+        v = float(m.group()) * k
+        return f"{v:g}"
+    for _, _, attrs in G.edges(data=True):
+        attrs["path"] = re.sub(r"-?\d+(?:\.\d+)?", scale_literal, attrs["path"])
+    return G
+
+
+def _render_sampled_with_metrics(
+    G: nx.Graph, path: Path, flatness_tol: float, scale_label: str,
+) -> None:
+    """Variant of render_sampled that overlays sample count + metric
+    values + the scale label in the header text, for side-by-side
+    scale-sweep comparison."""
+    from geg import edge_crossings, edge_orthogonality, node_edge_occlusion
+
+    box = _layout(G)
+    r = _node_radius(box)
+    stroke_w = r * 0.4
+    dot_r = r * 0.35
+    lines = [_svg_open(box)]
+    diag = math.hypot(box["width"], box["height"])
+
+    total_samples = 0
+    rendered_edges = []
+    for u, v, attrs in G.edges(data=True):
+        poly = edge_polyline(
+            source=(G.nodes[u]["x"], G.nodes[u]["y"]),
+            target=(G.nodes[v]["x"], G.nodes[v]["y"]),
+            path_str=attrs["path"],
+            flatness_tol=flatness_tol,
+        )
+        total_samples += len(poly)
+        rendered_edges.append((u, v, poly))
+
+    eo = edge_orthogonality(G, flatness_fraction=FLATNESS_FRACTION)
+    ec = edge_crossings(G, flatness_fraction=FLATNESS_FRACTION)
+    neo = node_edge_occlusion(G, flatness_fraction=FLATNESS_FRACTION)
+
+    fs = diag * 0.018
+    # Multiple header lines so the readout stays legible.
+    lines.append(
+        f'  <text x="{box["min_x"] + 10}" y="{box["min_y"] + fs * 1.3}" '
+        f'font-family="monospace" font-size="{fs:.2f}" fill="#555555">'
+        f'scale={scale_label}  {total_samples} pts</text>\n'
+    )
+    lines.append(
+        f'  <text x="{box["min_x"] + 10}" y="{box["min_y"] + fs * 2.7}" '
+        f'font-family="monospace" font-size="{fs * 0.75:.2f}" fill="#999999">'
+        f'EO={eo:.6f}  EC={ec:.6f}  NEO={neo:.6f}</text>\n'
+    )
+
+    for u, v, poly in rendered_edges:
+        # `%g` preserves full float precision without scale-dependent
+        # decimal truncation (a %.3f would round 0.0375 to 0.038 at
+        # scale 1e-3 while printing 37.5 exactly at scale 1).
+        d = "M" + " L".join(f"{x:.10g},{y:.10g}" for x, y in poly)
+        lines.append(
+            f'  <path d="{d}" fill="none" stroke="#555555" '
+            f'stroke-width="{stroke_w:g}"/>\n'
+        )
+    for _, _, poly in rendered_edges:
+        for x, y in poly[1:-1]:
+            lines.append(
+                f'  <circle cx="{x:.10g}" cy="{y:.10g}" r="{dot_r:.10g}" '
+                f'fill="#e74c3c" stroke="none"/>\n'
+            )
+    lines.append(_render_nodes(G, r))
+    lines.append("</svg>\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def generate_scale_sweep() -> None:
+    """Render the signature drawing at several coordinate scales to a
+    `scale_sweep/` sub-directory. Because both the SVG layout and the
+    flatness_fraction parameter are scale-proportional, every sampled
+    SVG should be visually identical (modulo the header text showing
+    the actual coordinate range), with identical sample counts and
+    metric values. Visual diff = scale-invariance proof.
+    """
+    sweep_dir = OUT_DIR / "scale_sweep"
+    sweep_dir.mkdir(exist_ok=True)
+    scales = [
+        ("1e-3", 1e-3),
+        ("1",    1.0),
+        ("1e3",  1e3),
+        ("1e6",  1e6),
+    ]
+    print("  scale_sweep/ ...")
+    for label, k in scales:
+        G = _scale_signature(k)
+        tol = _flatness_tol(G)
+        render_original(G, sweep_dir / f"signature_scale_{label}_original.svg")
+        _render_sampled_with_metrics(
+            G, sweep_dir / f"signature_scale_{label}_sampled.svg",
+            tol, label,
+        )
+        print(f"    scale={label:5s}  node_diag={math.hypot(*_layout_span(G)):.3e}  tol={tol:.3e}")
+
+
+def _layout_span(G: nx.Graph) -> tuple:
+    xs = [d["x"] for _, d in G.nodes(data=True)]
+    ys = [d["y"] for _, d in G.nodes(data=True)]
+    return (max(xs) - min(xs), max(ys) - min(ys))
+
+
 def main() -> None:
     for name, builder in DRAWINGS.items():
         G = builder()
@@ -347,7 +471,8 @@ def main() -> None:
         render_original(G, OUT_DIR / f"{name}_original.svg")
         render_sampled(G, OUT_DIR / f"{name}_sampled.svg", tol)
         print(f"  {name:14s}  tol={tol:.3f}")
-    print(f"Wrote {2 * len(DRAWINGS)} SVGs to {OUT_DIR}")
+    generate_scale_sweep()
+    print(f"Wrote {2 * len(DRAWINGS)} top-level SVGs + 8 scale_sweep SVGs to {OUT_DIR}")
 
 
 if __name__ == "__main__":

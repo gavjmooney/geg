@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="600.0" height="300.0" viewBox="-150000.0 -150000.0 600000.0 300000.0">
+  <text x="-149990.0" y="-149980.0" font-family="monospace" font-size="13416.41" fill="#999999">ORIGINAL</text>
+  <path d="M0,0 L30000,0 Q45000,-45000 60000,0 L90000,0 C100000,-55000 130000,55000 140000,0 L170000,0 Q185000,20000 200000,0 L230000,0 C240000,-18000 260000,18000 270000,0 L300000,0" fill="none" stroke="#1f77b4" stroke-width="2880.000"/>
+  <circle cx="0.000" cy="0.000" r="7200.000" fill="#ffffff" stroke="#000000" stroke-width="1800.000"/>
+  <circle cx="300000.000" cy="0.000" r="7200.000" fill="#ffffff" stroke="#000000" stroke-width="1800.000"/>
+</svg>
