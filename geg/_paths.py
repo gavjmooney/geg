@@ -127,6 +127,16 @@ def edge_polyline(
     else:
         poly = flatten_path_to_polyline(path_str, samples_per_curve=samples_per_curve)
     if poly:
+        # Orient poly so its first point matches source. An undirected
+        # graph's `G.edges(data=True)` can yield (u, v) in either order,
+        # so if the caller passed `source = G.nodes[u]` the path may
+        # actually start at `target`'s position. Reversing here keeps
+        # the snapped polyline consistent with (source, target) rather
+        # than end-swapping it.
+        d_start_src = math.hypot(poly[0][0] - source[0], poly[0][1] - source[1])
+        d_start_tgt = math.hypot(poly[0][0] - target[0], poly[0][1] - target[1])
+        if d_start_tgt < d_start_src:
+            poly.reverse()
         poly[0] = source
         poly[-1] = target
     return poly

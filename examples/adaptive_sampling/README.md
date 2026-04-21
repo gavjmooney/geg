@@ -27,6 +27,7 @@ python -m examples.adaptive_sampling.generate
 | `pinwheel` | Eight Q-arc spokes bending counterclockwise. Mirror-symmetric curves show the sampler is direction-agnostic. |
 | `tangled_s` | Four deliberately tight cubic S-curves crossing through a common region. **Inflection points are where the extra density lands** — the sampler spends its budget where curvature sign flips, not where the curve is monotonic. |
 | `flow_network` | Mixed-curvature flow diagram: some gentle connectors between "hidden-layer" nodes get just 2-3 samples, while the dramatic U-turn from output back to input is densely sampled. |
+| `signature` | A **single compound path** interleaving 5 straight `L` segments with 4 Beziers of varying curvature (gentle Q, tight C S-curve, mild Q, shallow C). Shows that within one path: Line segments stay as 2 points, and each non-Line segment is flattened adaptively and independently — a tight cubic gets many samples while an adjacent gentle arc gets only a handful. |
 
 ## Reading the sampled SVGs
 
@@ -43,15 +44,19 @@ at sharp corners. Adaptive flattening redirects that budget.
 
 ## Sample counts at `flatness_fraction = 0.005`
 
-| Drawing | Curves | Total sample points |
+| Drawing | Curves (non-Line segments) | Total sample points |
 |---|---|---|
 | `sine_wave` | 4 | 20 |
 | `flower` | 6 | 42 |
 | `pinwheel` | 8 | 40 |
 | `tangled_s` | 4 | 60 |
 | `flow_network` | 10 | 41 |
+| `signature` | 4 (in a single 9-segment path) | 26 |
 
 For comparison, fixed-N at `samples_per_curve = 100` would produce
-400 / 600 / 800 / 400 / 1000 points respectively — one to two orders
-of magnitude more samples on graphs where most curves are mild, and
-only slightly more on graphs with tight curves.
+400 / 600 / 800 / 400 / 1000 / 400 points respectively — one to two
+orders of magnitude more samples on graphs where most curves are
+mild, and only slightly more on graphs with tight curves. The
+`signature` row is particularly telling: a 9-segment path with 5
+Lines and 4 Beziers collapses from 400 samples (100 per curve) to
+26 (straight pieces stay as 2 points; each curve gets 3-8).

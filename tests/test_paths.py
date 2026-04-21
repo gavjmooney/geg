@@ -234,6 +234,56 @@ class TestEdgePolylineAdaptiveMode:
         )
         assert poly == [(0.0, 0.0), (10.0, 0.0)]
 
+    def test_reverses_poly_when_path_authored_target_to_source(self):
+        """NetworkX `G.edges(data=True)` on an undirected graph can yield
+        (u, v) in the opposite order from how the edge was added, so the
+        `source` passed to `edge_polyline` may correspond to the path's
+        END rather than its start. edge_polyline must reverse the polyline
+        in that case, otherwise poly[0] (path start) gets snapped to
+        source and poly[-1] (path end) gets snapped to target even though
+        the interior points were ordered for the opposite direction —
+        yielding a polyline with a stray crossing segment."""
+        # Path runs (10, 0) → (0, 10) via a quadratic. Caller passes
+        # source=(0, 10) and target=(10, 0) — opposite direction.
+        source = (0.0, 10.0)
+        target = (10.0, 0.0)
+        poly = P.edge_polyline(source, target, "M10,0 Q5,-5 0,10", samples_per_curve=20)
+        # Endpoints must match source and target, not the other way around.
+        assert poly[0] == source
+        assert poly[-1] == target
+        # Interior samples should trace smoothly from source toward target,
+        # never jumping halfway across. The first interior sample's
+        # distance to source must be small (first sample along the curve
+        # near source), not large.
+        assert len(poly) >= 3
+        first_interior = poly[1]
+        d_to_source = math.hypot(
+            first_interior[0] - source[0], first_interior[1] - source[1],
+        )
+        d_to_target = math.hypot(
+            first_interior[0] - target[0], first_interior[1] - target[1],
+        )
+        assert d_to_source < d_to_target, (
+            f"first interior sample at {first_interior} is closer to target "
+            f"{target} (d={d_to_target:.3f}) than to source {source} "
+            f"(d={d_to_source:.3f}) — polyline was not reversed"
+        )
+
+    def test_same_direction_path_not_reversed(self):
+        """Sanity: when the path is authored source → target (the normal
+        case), edge_polyline must NOT reverse it."""
+        source = (0.0, 0.0)
+        target = (10.0, 0.0)
+        poly = P.edge_polyline(source, target, "M0,0 Q5,5 10,0", samples_per_curve=10)
+        assert poly[0] == source
+        assert poly[-1] == target
+        # Interior samples are on the true curve (y positive or similar),
+        # not reversed to the mirror side.
+        # For M0,0 Q5,5 10,0 (y>=0 throughout), all interior samples
+        # should have y >= 0.
+        for _, y in poly[1:-1]:
+            assert y >= 0
+
 
 class TestMetricsAdaptiveMode:
     """Smoke tests for flatness_fraction on the public metrics. The metric

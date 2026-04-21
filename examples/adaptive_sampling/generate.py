@@ -21,7 +21,7 @@ from typing import Callable, Dict
 
 import networkx as nx
 
-from geg._paths import flatten_path_adaptive
+from geg._paths import edge_polyline, flatten_path_adaptive
 
 
 OUT_DIR = Path(__file__).parent
@@ -174,12 +174,40 @@ def build_flow_network() -> nx.Graph:
     return G
 
 
+def build_signature() -> nx.Graph:
+    """A single edge whose path interleaves 5 straight Lines with 4 Bezier
+    segments of varying curvature. Demonstrates that within one compound
+    path, Line segments collapse to their two endpoints (no sampling
+    wasted) while each curved segment is flattened adaptively and
+    independently of its neighbours — so a tight cubic next to a gentle
+    quadratic gets correspondingly different sample densities."""
+    G = nx.Graph()
+    _add_node(G, "A",   0.0, 0.0)
+    _add_node(G, "B", 300.0, 0.0)
+    # M  L     Q        L   C             L     Q       L   C            L
+    # 0  30    60       90  140           170   200     230 270          300
+    path = (
+        "M0,0 L30,0 "                    # straight baseline
+        "Q45,-45 60,0 "                  # shallow arch up
+        "L90,0 "                         # straight
+        "C100,-55 130,55 140,0 "         # tight S-curve
+        "L170,0 "                        # straight
+        "Q185,20 200,0 "                 # mild arch down
+        "L230,0 "                        # straight
+        "C240,-18 260,18 270,0 "         # shallow S
+        "L300,0"                         # straight to target
+    )
+    _add_edge(G, "A", "B", path)
+    return G
+
+
 DRAWINGS: Dict[str, Callable[[], nx.Graph]] = {
     "sine_wave":    build_sine_wave,
     "flower":       build_flower,
     "pinwheel":     build_pinwheel,
     "tangled_s":    build_tangled_s,
     "flow_network": build_flow_network,
+    "signature":    build_signature,
 }
 
 
@@ -275,11 +303,16 @@ def render_sampled(G: nx.Graph, path: Path, flatness_tol: float) -> None:
     total_samples = 0
     rendered_edges = []
     for u, v, attrs in G.edges(data=True):
-        poly = flatten_path_adaptive(attrs["path"], flatness_tol=flatness_tol)
-        # Snap endpoints to node positions so the polyline meets the node
-        # circles cleanly (the raw path may be a hair off).
-        poly[0] = (G.nodes[u]["x"], G.nodes[u]["y"])
-        poly[-1] = (G.nodes[v]["x"], G.nodes[v]["y"])
+        # Use edge_polyline so endpoint snapping is orientation-aware — an
+        # undirected graph's iteration order can yield (u, v) opposite to
+        # the path's authored direction; edge_polyline reverses when the
+        # path starts closer to target than to source.
+        poly = edge_polyline(
+            source=(G.nodes[u]["x"], G.nodes[u]["y"]),
+            target=(G.nodes[v]["x"], G.nodes[v]["y"]),
+            path_str=attrs["path"],
+            flatness_tol=flatness_tol,
+        )
         total_samples += len(poly)
         rendered_edges.append((u, v, poly))
     lines.append(
