@@ -374,3 +374,40 @@ class TestWriteGraphMLMultigraph:
         # The XML should contain two <edge ... source="0" target="1"> entries.
         xml = out.read_text()
         assert xml.count('source="0"') == 2
+
+    def test_read_graphml_returns_multigraph_on_parallel_edges(self, tmp_path):
+        """Regression for a silent-collapse bug: `read_graphml` used to
+        always return a plain `nx.Graph`, so parallel edges got merged
+        (NetworkX overwrites attrs when `add_edge` is called twice with
+        the same endpoints). The reader now scans for duplicate
+        (source, target) pairs before constructing and returns a
+        MultiGraph when the file has parallels."""
+        import networkx as nx
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=100.0, y=0.0)
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q50,-50 100,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q50,50 100,0")
+        out = tmp_path / "mg.graphml"
+        write_graphml(G, str(out))
+        G2 = read_graphml(str(out))
+        assert G2.is_multigraph(), (
+            "reader collapsed multigraph to plain Graph; parallel edges lost"
+        )
+        assert G2.number_of_edges() == 2, (
+            f"expected 2 edges after round-trip, got {G2.number_of_edges()}"
+        )
+
+    def test_read_graphml_stays_simple_without_parallels(self, tmp_path):
+        """Sanity: when the file has no parallel edges, the reader stays
+        on plain nx.Graph (not a MultiGraph). Avoids silently widening
+        downstream type expectations."""
+        import networkx as nx
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "b")
+        out = tmp_path / "simple.graphml"
+        write_graphml(G, str(out))
+        G2 = read_graphml(str(out))
+        assert not G2.is_multigraph()

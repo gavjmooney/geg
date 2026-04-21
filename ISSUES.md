@@ -15,6 +15,18 @@ Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`
 
 ## Confirmed bugs / spec mismatches
 
+### MG-1 — curves_promotion silently collapsed parallel curved edges  [FIXED]
+- **Where:** `geg/geg_parser.py::curves_promotion`, old line 442.
+- **What:** On a MultiGraph with parallel curved edges between the same `(u, v)` pair, both edges got `eid = attrs.get('id', f"{u}-{v}")`. Without an explicit `id` attribute (the common case), both edges named their intermediate nodes `"{u}-{v}_pt_{i}"`. The second iteration's `H.add_node` calls overwrote the first's coordinates. Observable symptom: the promoted graph for mirror-symmetric arcs (one up, one down) retained only one arc's samples, skewing `aspect_ratio` and anything else that consumes the promoted bbox.
+- **Fix:** Iterate with `keys=True` on multigraphs; default `eid` to `f"{u}-{v}-{key}"` for parallel edges so their promoted nodes get unique ids.
+- **TVCG-impact:** **none.** Corpus has no multigraphs.
+
+### MG-2 — read_graphml collapsed parallel edges to a simple Graph  [FIXED]
+- **Where:** `geg/io/graphml.py::read_graphml`, old line 91.
+- **What:** The reader always constructed `nx.Graph()` (or `nx.DiGraph()`), so a round-trip of a `nx.MultiGraph` through `write_graphml` / `read_graphml` silently dropped all but one of each parallel edge — NetworkX's `add_edge` on a simple graph overwrites attrs when called twice with the same endpoints. The writer was correctly emitting two `<edge>` elements; the reader was merging them on parse.
+- **Fix:** Pre-scan all `<edge>` elements for duplicate `(source, target)` pairs (normalised for undirected) before constructing the container. If duplicates exist, use `nx.MultiGraph` / `nx.MultiDiGraph`; otherwise stay on `nx.Graph` / `nx.DiGraph` so downstream type expectations don't silently widen.
+- **TVCG-impact:** **none.** Corpus is simple.
+
 ### AR-1 — Self-loop tangents silently dropped from angular resolution  [FIXED]
 - **Where:** `geg/angular_resolution.py::_incident_edge_angles`, old line 88.
 - **What:** The guard `if seg0.start == seg0.end: continue` was intended to skip zero-length Line segments, but it also caught every Bezier / Arc self-loop (they have `start == end` at the pivot node by definition, while their control points give them a well-defined tangent). The self-loop's two tangent incidences were both dropped, yet `G.degree[v]` still counted the self-loop as 2 — so the `ideal = 360° / deg(v)` denominator was inflated without the loop's geometry actually being measured. A vertex with a self-loop was silently penalised for having one, regardless of the loop's shape.

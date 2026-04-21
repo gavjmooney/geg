@@ -345,6 +345,62 @@ class TestMetricsAdaptiveMode:
         assert "a" in H_adaptive.nodes and "b" in H_adaptive.nodes
 
 
+class TestCurvesPromotionMultigraph:
+    """Regression: on a MultiGraph with parallel curved edges, each edge's
+    promoted intermediate nodes must get unique names so the second edge's
+    samples don't overwrite the first's.
+
+    Pre-fix, both edges defaulted `eid = "{u}-{v}"` and wrote intermediate
+    nodes named `"{u}-{v}_pt_{i}"` — the second edge silently overwrote
+    the first's positions. Observable symptom: the promoted graph had only
+    one curve's samples (whichever edge was iterated second).
+    """
+
+    def _parallel_arcs(self):
+        import networkx as nx
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        # Mirror-symmetric arcs — one up, one down.
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,-5 10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,5 10,0")
+        return G
+
+    def test_both_arcs_retained_in_promoted_graph(self):
+        from geg import curves_promotion
+        G = self._parallel_arcs()
+        H = curves_promotion(G)
+        seg_ys = [
+            H.nodes[n]["y"] for n, d in H.nodes(data=True)
+            if d.get("is_segment", False)
+        ]
+        # Without the fix, all segment y values would have the same sign
+        # (one arc overwrote the other). With the fix, both arcs contribute:
+        # negative y from the upper arc, positive y from the lower arc.
+        assert min(seg_ys) < 0 < max(seg_ys), (
+            f"expected segment y's straddling 0, got range "
+            f"[{min(seg_ys):.2f}, {max(seg_ys):.2f}] — parallel-edge "
+            f"intermediate-node ids collided"
+        )
+
+    def test_unique_segment_node_ids(self):
+        from geg import curves_promotion
+        G = self._parallel_arcs()
+        H = curves_promotion(G)
+        seg_names = [
+            n for n, d in H.nodes(data=True) if d.get("is_segment", False)
+        ]
+        # Enough segment nodes for BOTH arcs — ~6-10 per arc, so combined
+        # should be >= 12. Without the fix, one arc's nodes clobbered
+        # the other's and we saw only ~7 segment nodes total.
+        assert len(seg_names) >= 12, (
+            f"got only {len(seg_names)} segment nodes; "
+            f"parallel-edge collision likely"
+        )
+        # All ids should be unique (they're node keys anyway).
+        assert len(set(seg_names)) == len(seg_names)
+
+
 class TestScaleInvariance:
     """Adaptive flattening scales tolerances proportionally to the node-bbox
     diagonal, so metric values must be identical on a graph regardless of

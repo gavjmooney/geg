@@ -246,6 +246,91 @@ class TestSelfLoopMetricValues:
         assert edge_length_deviation(G) == pytest.approx(0.798594, abs=1e-5)
 
 
+class TestMultigraphMetricValues:
+    """Pin metric behaviour on MultiGraphs with parallel curved edges —
+    the common real-world shape (e.g. two bus routes between cities,
+    drawn with one arc going over and one under).
+
+    Also regression tests for two bugs found during multigraph review:
+      - curves_promotion collapsing parallel edges via ID collision,
+        making promoted-bbox-dependent metrics (Asp) silently wrong.
+      - read_graphml collapsing parallel edges by returning a plain
+        Graph, which would make fixed-N metrics silently lose edges.
+    """
+
+    def _parallel_arcs(self):
+        import networkx as nx
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,-5 10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,5 10,0")
+        return G
+
+    def test_two_parallel_arcs(self):
+        """Two nodes with mirror-symmetric Q arcs between them."""
+        import pytest
+        from geg import (
+            angular_resolution_min_angle, aspect_ratio,
+            crossing_angle, edge_crossings, edge_length_deviation,
+            edge_orthogonality, gabriel_ratio_edges, node_edge_occlusion,
+            node_resolution, node_uniformity,
+        )
+        G = self._parallel_arcs()
+        # AR at each vertex: two tangents 90° apart (curves leave at ±45°
+        # to horizontal), ideal = 180°, min gap = 90° → deficit 0.5 →
+        # AR = 0.5.
+        assert angular_resolution_min_angle(G) == pytest.approx(0.5)
+        # EC: parallel edges share endpoints so c_deg discount makes
+        # c_max = 0 → score = 1.0. Their geometric crossing at the
+        # centre doesn't count per paper §3.2's c_deg convention.
+        assert edge_crossings(G) == pytest.approx(1.0)
+        assert crossing_angle(G) == pytest.approx(1.0)
+        # Asp: promoted bbox 10 wide × 5 tall (upper arc peaks at y=-2.5,
+        # lower at y=+2.5) → h/w = 0.5. This value was 0.25 before the
+        # curves_promotion parallel-edge-id fix silently dropped the
+        # second arc; the new 0.5 is the correct answer.
+        assert aspect_ratio(G) == pytest.approx(0.5)
+        # EO: both arcs have the same mean segment deviation (~0.41);
+        # averaged over 2 edges gives the same single-arc value.
+        assert edge_orthogonality(G) == pytest.approx(0.410469, abs=1e-5)
+        # Metrics indifferent to multigraph-ness.
+        assert gabriel_ratio_edges(G) == pytest.approx(1.0)
+        assert node_edge_occlusion(G) == pytest.approx(1.0)
+        assert node_resolution(G) == pytest.approx(1.0)
+        assert node_uniformity(G) == pytest.approx(1.0)
+        assert edge_length_deviation(G) == pytest.approx(1.0)
+
+    def test_neo_detects_occluded_node_on_one_arc(self):
+        """Put a non-endpoint node `c` on the peak of the upper arc. NEO
+        should drop to 0.5: one edge fully occluded, one pristine,
+        averaged."""
+        import pytest
+        import networkx as nx
+        from geg import node_edge_occlusion
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_node("c", x=5.0, y=-2.5)  # on upper Q's peak
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,-5 10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,5 10,0")
+        assert node_edge_occlusion(G) == pytest.approx(0.5, abs=1e-6)
+
+    def test_ar_on_3_parallel_curves(self):
+        """Three parallel edges with different curvatures. Vertex degree
+        = 3, ideal gap = 120°. Pins the observed AR value to catch drift."""
+        import pytest
+        import networkx as nx
+        from geg import angular_resolution_min_angle
+        G = nx.MultiGraph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_edge("a", "b", path="M0,0 L10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,-3 10,0")
+        G.add_edge("a", "b", polyline=True, path="M0,0 Q5,3 10,0")
+        assert angular_resolution_min_angle(G) == pytest.approx(0.258031, abs=1e-5)
+
+
 class TestSelfLoopTangentHandling:
     """Verify that angular_resolution treats a self-loop as two incidences
     at its vertex — once at the outgoing tangent (t=0), once at the

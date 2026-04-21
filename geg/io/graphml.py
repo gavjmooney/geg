@@ -88,7 +88,26 @@ def read_graphml(
     # Detect directedness from <graph edgedefault="...">.
     graph_elm = root.find(f"{{{GRAPHML_NS}}}graph")
     directed = graph_elm is not None and graph_elm.get("edgedefault") == "directed"
-    G = nx.DiGraph() if directed else nx.Graph()
+
+    # Detect multigraph by scanning for duplicate (source, target) pairs.
+    # Without this, parallel edges silently collapse on read (NetworkX's
+    # plain Graph/DiGraph overwrites attrs when G.add_edge is called
+    # twice with the same endpoints).
+    edge_elements = list(root.findall(f".//{{{GRAPHML_NS}}}edge"))
+    seen_pairs: set = set()
+    is_multi = False
+    for edge in edge_elements:
+        u = edge.get("source")
+        v = edge.get("target")
+        key = (u, v) if directed else tuple(sorted((u, v)))
+        if key in seen_pairs:
+            is_multi = True
+            break
+        seen_pairs.add(key)
+    if is_multi:
+        G: nx.Graph = nx.MultiDiGraph() if directed else nx.MultiGraph()
+    else:
+        G = nx.DiGraph() if directed else nx.Graph()
 
     for node in root.findall(f".//{{{GRAPHML_NS}}}node"):
         attrs: dict = {}
@@ -133,7 +152,7 @@ def read_graphml(
                 attrs["y"] += attrs["height"] / 2.0
         G.add_node(node.get("id"), **attrs)
 
-    for edge in root.findall(f".//{{{GRAPHML_NS}}}edge"):
+    for edge in edge_elements:
         source = edge.get("source")
         target = edge.get("target")
         bends = []

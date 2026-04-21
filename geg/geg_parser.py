@@ -437,9 +437,18 @@ def curves_promotion(
         a['is_segment'] = False
         H.add_node(n, **a)
 
-    # Process each edge
-    for u, v, attrs in G.edges(data=True):
-        eid   = attrs.get('id', f"{u}-{v}")
+    # Process each edge.  On a MultiGraph we also pick up the edge key
+    # so parallel edges (u, v) / (u, v) each get a unique identifier for
+    # their promoted intermediate nodes — otherwise the second edge's
+    # samples overwrite the first's at shared `"{u}-{v}_pt_{i}"` ids.
+    if G.is_multigraph():
+        edge_iter = ((u, v, k, d) for u, v, k, d in G.edges(data=True, keys=True))
+    else:
+        edge_iter = ((u, v, None, d) for u, v, d in G.edges(data=True))
+
+    for u, v, key, attrs in edge_iter:
+        default_id = f"{u}-{v}" if key is None else f"{u}-{v}-{key}"
+        eid   = attrs.get('id', default_id)
         poly  = attrs.get('polyline', False)
 
         # Copy straight-line edges untouched
