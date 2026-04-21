@@ -151,15 +151,21 @@ class TestComputeMetricsEdgeCases:
 
 
 class TestSelfLoopMetricValues:
-    """Pin metric values on canonical self-loop drawings. Existing
-    self-loop coverage checks that nothing crashes but pins no values —
+    """Pin metric values on canonical self-loop drawings. Existing self-
+    loop coverage checks that nothing crashes but pins no values —
     this makes silent drift visible if a future refactor subtly changes
     how any metric sees the u == v case.
 
+    Paper §3.2 eq. (1) treats a self-loop as contributing two incidences
+    to its vertex (outgoing tangent at t=0 and incoming tangent at t=1,
+    reversed). This is documented in `angular_resolution._incident_edge_angles`
+    and now implemented correctly — see TestSelfLoopTangentHandling
+    below for the direct tangent-extraction test.
+
     Not exhaustive: metrics that a self-loop should leave undisturbed
     (EC, CA, NEO, GR, NR) are pinned at 1.0; metrics that self-loops
-    materially change (EO, AR, ELD, Asp) are pinned at currently-
-    observed values against a known fixture.
+    materially change (EO, AR, ELD, Asp) are pinned at values derived
+    from post-fix behaviour (v0.3.0+).
     """
 
     def test_pure_self_loop_with_isolated_node(self):
@@ -179,7 +185,6 @@ class TestSelfLoopMetricValues:
         G.add_edge("a", "a", polyline=True, path="M0,0 Q3,3 0,0")
 
         # Metrics that ignore / are immune to the self-loop.
-        assert angular_resolution_min_angle(G) == pytest.approx(1.0)
         assert crossing_angle(G) == pytest.approx(1.0)
         assert edge_crossings(G) == pytest.approx(1.0)
         assert gabriel_ratio_edges(G) == pytest.approx(1.0)
@@ -195,6 +200,13 @@ class TestSelfLoopMetricValues:
         # EO on the self-loop only: the Q curve samples at ~45° angles,
         # giving a mean segment-deviation ≈ 1 → EO ≈ 0.
         assert edge_orthogonality(G) == pytest.approx(0.0, abs=1e-6)
+
+        # AR: the symmetric Q self-loop's outgoing and incoming tangents
+        # happen to coincide (the control (-0.3, -0.3) is collinear with
+        # the node at the origin), so vertex a has two identical angles
+        # → min gap = 0 → deficit = 1 → AR = 0. This is a legitimate
+        # "bad" AR score on a symmetric loop, not a bug.
+        assert angular_resolution_min_angle(G) == pytest.approx(0.0, abs=1e-6)
 
     def test_triangle_plus_self_loop(self):
         """Equilateral triangle with an extra self-loop on vertex `a`.
@@ -216,9 +228,14 @@ class TestSelfLoopMetricValues:
         G.add_edge("c", "a", path=f"M0.5,{math.sqrt(3) / 2} L0,0")
         G.add_edge("a", "a", polyline=True, path="M0,0 Q-0.3,-0.3 0,0")
 
-        # AR changes at vertex a (now degree 4 with self-loop's two
-        # tangents, vs degree 2 on plain triangle).
-        assert angular_resolution_min_angle(G) == pytest.approx(4.0 / 9.0)
+        # AR at vertex a: degree 4 (a-b + c-a + self-loop×2), ideal
+        # gap = 90°. Angles extracted = [90° (a-b), 150° (c-a), 315°,
+        # 315° (symmetric self-loop — both tangents coincide)]. Gaps
+        # = [60, 165, 0, 135]; min = 0 → deficit at a = 1. Vertices
+        # b and c (degree 2, 60° min gap vs 180° ideal) each deficit
+        # 2/3. Total deficit = 1 + 2/3 + 2/3 = 7/3 over 3 eligible
+        # vertices → AR = 1 − 7/9 = 2/9.
+        assert angular_resolution_min_angle(G) == pytest.approx(2.0 / 9.0)
         # EC / NEO / GR still see no crossings / occlusions on a legal
         # planar triangle + localised self-loop.
         assert edge_crossings(G) == pytest.approx(1.0)
@@ -227,6 +244,92 @@ class TestSelfLoopMetricValues:
         # EO / ELD drift vs. the plain triangle (EO=5/9, ELD=1):
         assert edge_orthogonality(G) == pytest.approx(0.416667, abs=1e-5)
         assert edge_length_deviation(G) == pytest.approx(0.798594, abs=1e-5)
+
+
+class TestSelfLoopTangentHandling:
+    """Verify that angular_resolution treats a self-loop as two incidences
+    at its vertex — once at the outgoing tangent (t=0), once at the
+    incoming tangent (t=1, captured by re-orienting the reversed path).
+
+    Regression test for a bug discovered in v0.3.0 where all self-loop
+    curves were silently dropped from the angle computation because the
+    code's degeneracy guard (`seg0.start == seg0.end`) was too broad —
+    it intended to skip zero-length Line segments but also caught Bezier
+    self-loops (which have start == end but a well-defined tangent
+    through their control points).
+    """
+
+    def test_symmetric_q_self_loop_yields_two_coincident_tangents(self):
+        """A Q curve `M0,0 Q-0.3,-0.3 0,0` is symmetric: the outgoing
+        tangent P'(0) = 2·(C−P0) equals the reversed curve's outgoing
+        tangent 2·(C−P1), giving two IDENTICAL angles. The loop still
+        registers both — it's a legitimate "pathologically-collapsed"
+        case, not an empty-angles case."""
+        import networkx as nx
+        from geg.angular_resolution import _incident_edge_angles
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_edge("a", "a", polyline=True, path="M0,0 Q-0.3,-0.3 0,0")
+        angles = _incident_edge_angles(G, "a")
+        assert len(angles) == 2, (
+            f"self-loop should contribute 2 tangent incidences; got {angles!r}"
+        )
+        # Both tangents coincide (~315° clockwise-from-+y) because the
+        # Q curve is symmetric about its midpoint.
+        assert abs(angles[0] - angles[1]) < 1e-6
+
+    def test_asymmetric_cubic_self_loop_yields_distinct_tangents(self):
+        """A cubic self-loop `M0,0 C1,1 -1,1 0,0`: outgoing tangent
+        3·(C1−P0) = (3, 3) (up-right, 135° CW-from-+y), incoming
+        reversed tangent 3·(C2_reversed − P1_reversed) = 3·(−1, 1) =
+        (−3, 3) (up-left, 225° CW-from-+y). The two tangents are
+        genuinely distinct, proving the "self-loop = two edges"
+        treatment is doing work."""
+        import pytest
+        import networkx as nx
+        from geg.angular_resolution import _incident_edge_angles
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_edge("a", "a", polyline=True, path="M0,0 C1,1 -1,1 0,0")
+        angles = _incident_edge_angles(G, "a")
+        assert len(angles) == 2
+        # Tangents are distinct (not coincident) — the "two incidences"
+        # treatment is carrying actual geometric information.
+        assert abs(angles[0] - angles[1]) > 10.0
+        # Pinned values: clockwise-from-+y convention.
+        assert sorted(angles) == [pytest.approx(135.0, abs=1e-6),
+                                  pytest.approx(225.0, abs=1e-6)]
+
+    def test_perfect_AR_degree_4_selfloop_at_origin(self):
+        """Construct a vertex whose two normal edges plus a self-loop's
+        two tangents form a perfect 90°-apart degree-4 crossing. AR at
+        that vertex should be 1 (perfect)."""
+        # Normal edges going east (tangent 90° CW-from-+y) and west
+        # (tangent 270°). Self-loop whose two tangents go north (0°)
+        # and south (180°).
+        # Cubic self-loop from (0,0) with C1 on +y axis, C2 on −y axis:
+        #   tangent(0) ∝ C1 − P0 = (0, +); in SVG y-down coords that's
+        #   (0, −1) after flipping, i.e. pointing up on screen.
+        #   reversed tangent(0) ∝ C2_rev − P1_rev = (0, −1) in SVG
+        #   → (0, +1) Cartesian, pointing down.
+        import pytest
+        import networkx as nx
+        from geg import angular_resolution_min_angle
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("e", x=1.0, y=0.0)   # east
+        G.add_node("w", x=-1.0, y=0.0)  # west
+        G.add_edge("a", "e", path="M0,0 L1,0")
+        G.add_edge("a", "w", path="M0,0 L-1,0")
+        # Self-loop tangents along +y / -y in SVG coords: C1=(0, 1),
+        # C2=(0, -1). After reversal: P0_rev=(0,0), C1_rev=(0,-1),
+        # so tangent at reversed-curve's t=0 points -y. In SVG's y-down
+        # that's "up on screen" for the original outgoing tangent and
+        # "down on screen" for the reversed.
+        G.add_edge("a", "a", polyline=True, path="M0,0 C0,1 0,-1 0,0")
+        # Vertices e and w are degree 1 → ineligible. Only a is eligible.
+        # At a: 4 tangents spaced 90° apart → perfect AR.
+        assert angular_resolution_min_angle(G) == pytest.approx(1.0, abs=1e-6)
 
     def test_directed_graph_with_curve(self, m):
         import networkx as nx

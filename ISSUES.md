@@ -15,6 +15,12 @@ Empirical deltas for the fixtures in `tests/fixtures/` are in `METRIC_DELTAS.md`
 
 ## Confirmed bugs / spec mismatches
 
+### AR-1 — Self-loop tangents silently dropped from angular resolution  [FIXED]
+- **Where:** `geg/angular_resolution.py::_incident_edge_angles`, old line 88.
+- **What:** The guard `if seg0.start == seg0.end: continue` was intended to skip zero-length Line segments, but it also caught every Bezier / Arc self-loop (they have `start == end` at the pivot node by definition, while their control points give them a well-defined tangent). The self-loop's two tangent incidences were both dropped, yet `G.degree[v]` still counted the self-loop as 2 — so the `ideal = 360° / deg(v)` denominator was inflated without the loop's geometry actually being measured. A vertex with a self-loop was silently penalised for having one, regardless of the loop's shape.
+- **Fix:** Skip only `Line` segments with coincident endpoints (truly zero-length). For Bezier / Arc segments, trust `unit_tangent(0.0)`; add defensive guards against `NaN` / zero-magnitude tangents to cover any svgpathtools pathology.
+- **TVCG-impact:** **none.** The Mooney et al. corpus uses straight-line layouts without self-loops. For any future corpus containing self-loops, AR values on vertices adjacent to a self-loop will change — they were incorrect before this fix.
+
 ### ASP-1 — Aspect Ratio returned 0 for degenerate bounding box  [FIXED]
 - **Where:** `geg/aspect_ratio.py` (old `width <= 0 or height <= 0` branch).
 - **What:** Paper §3.2 defines `Asp(D) = 1` when `h(D) = 0` or `w(D) = 0`. The old code returned `0.0`.

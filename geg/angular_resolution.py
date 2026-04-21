@@ -85,9 +85,20 @@ def _incident_edge_angles(G: nx.Graph, node: Hashable) -> List[float]:
     for raw in raw_paths:
         path = parse_path(orient_svg_path_for_node(raw, x, y))
         seg0 = path[0]
-        if seg0.start == seg0.end:
-            continue  # degenerate: skip
-        tangent = seg0.unit_tangent(0.0)
+        # Degeneracy: a Line with coincident endpoints is a zero-length
+        # segment and has no tangent. Beziers/Arcs can legally have
+        # start == end (self-loops!) while still defining a well-formed
+        # tangent through their control points — don't skip those.
+        if isinstance(seg0, Line) and seg0.start == seg0.end:
+            continue
+        try:
+            tangent = seg0.unit_tangent(0.0)
+        except (ValueError, ZeroDivisionError):
+            continue
+        if not math.isfinite(tangent.real) or not math.isfinite(tangent.imag):
+            continue
+        if abs(tangent) < 1e-12:
+            continue
         vx, vy = tangent.real, -tangent.imag  # flip y to Cartesian
         theta_from_y = math.degrees(math.atan2(vy, vx) - math.pi / 2) % 360
         angles.append((360 - theta_from_y) % 360)
