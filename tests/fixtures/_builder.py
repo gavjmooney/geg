@@ -524,6 +524,68 @@ register(Fixture(
 ))
 
 
+def _build_cubic_bezier() -> nx.Graph:
+    # Single cubic Bezier (C command) — most common non-straight path type in
+    # real graph drawings (yEd, force-directed layouts with curve output).
+    # Endpoints a=(0,0), b=(4,0). Control points (1, 3) and (3, 3) — a
+    # symmetric arc peaking along y=2.25 at t=0.5.
+    # Parametric y(t) = 3·3·t·(1−t)² + 3·3·t²·(1−t) + 0 = 9·t·(1−t). Max at
+    # t=0.5: y = 9·0.5·0.5 = 2.25.
+    G = nx.Graph()
+    _add_node(G, "a", 0, 0)
+    _add_node(G, "b", 4, 0)
+    G.add_edge("a", "b", polyline=True, path="M0,0 C1,3 3,3 4,0")
+    return G
+
+
+register(Fixture(
+    name="cubic_bezier",
+    description="Single cubic Bezier edge from (0,0) to (4,0) via control points (1,3) and (3,3); symmetric arc peaking at (2, 2.25). Exercises the C path command (most common curve type in real graph drawings).",
+    build=_build_cubic_bezier,
+    expected={
+        # Only one edge → ELD vacuously 1.
+        "edge_length_deviation": 1.0,
+        "edge_crossings": 1.0,
+        "crossing_angle": 1.0,
+        # Endpoints are degree 1 → AR vacuous.
+        "angular_resolution_min_angle": 1.0,
+        "angular_resolution_avg_angle": 1.0,
+    },
+))
+
+
+def _build_orthogonal_hv() -> nx.Graph:
+    # Orthogonal L-path written with H / V commands (common output of
+    # Sugiyama / hierarchical layouts). `M0,0 H4 V2` is parsed as
+    # (0,0) → (4,0) → (4,2); svgpathtools exposes it as two Line segments
+    # internally. Pins the parser + sampler handling of H and V alongside
+    # the more common M/L forms.
+    G = nx.Graph()
+    _add_node(G, "a", 0, 0)
+    _add_node(G, "b", 4, 2)
+    G.add_edge("a", "b", polyline=True, path="M0,0 H4 V2")
+    return G
+
+
+register(Fixture(
+    name="orthogonal_hv",
+    description="Orthogonal L-path from a=(0,0) to b=(4,2) written with H/V commands ('M0,0 H4 V2'). Pins parser/sampler handling of H and V SVG commands; equivalent in geometry to `polyline_bend` but encoded differently.",
+    build=_build_orthogonal_hv,
+    expected={
+        # Both segments axis-aligned → δ = 0 → EO = 1 (identical to
+        # polyline_bend but via H/V rather than L).
+        "edge_orthogonality": 1.0,
+        # Promoted bbox 4×2 → Asp = 2/4 = 0.5.
+        "aspect_ratio": 0.5,
+        "edge_crossings": 1.0,
+        "crossing_angle": 1.0,
+        "edge_length_deviation": 1.0,  # one edge only.
+        "angular_resolution_min_angle": 1.0,  # degree-1 endpoints only.
+        "angular_resolution_avg_angle": 1.0,
+    },
+))
+
+
 # ---------- Post-registration: metrics that hold 1.0 across every fixture ----------
 # Every Phase-3 fixture is constructed so that no non-endpoint node is close
 # enough to any edge to trigger a node-edge-occlusion penalty at the default
