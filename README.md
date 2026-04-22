@@ -116,7 +116,7 @@ props["density"], props["is_planar"], props["diameter"]
 
 ### Readability metrics
 
-All metrics take a `networkx.Graph` (or `DiGraph`) with `x` / `y` node
+All metrics take a `networkx.Graph` with `x` / `y` node
 attributes and return a float in `[0, 1]`. Metrics that depend on edge
 geometry additionally read the edge `path` attribute.
 
@@ -150,8 +150,43 @@ kruskal_stress(G, *, apsp=None, weight=None) -> float
 neighbourhood_preservation(G, k=None) -> float
 node_edge_occlusion(G, *, epsilon_fraction=0.05) -> float
 node_resolution(G) -> float
-node_uniformity(G, *, bbox=None) -> float
+node_uniformity(G, *, bbox=None, include_curves=False) -> float
 ```
+
+#### Invariances and disconnected-graph handling
+
+| Metric | Scale-invariant | Rotation-invariant | Disconnected handling |
+| ------------------------------ | --- | --- | --- |
+| `angular_resolution(G)`        | ✓   | ✓   | none needed — per-vertex, skips degree ≤ 1 |
+| `aspect_ratio(G)`              | ✓   | ✗ ¹ | none — single bbox over the whole drawing |
+| `crossing_angle(G)`            | ✓   | ✓   | none — per-crossing |
+| `edge_crossings(G)`            | ✓   | ✓ ² | none — counts crossings globally |
+| `edge_length_deviation(G)`     | ✓   | ✓   | none — uses the edge-length distribution |
+| `edge_orthogonality(G)`        | ✓   | ✗ ¹ | none — per-edge, independent |
+| `kruskal_stress(G)`            | ✓   | ✓   | **per-component** weighted by convex-hull area (paper §3.3); singleton components contribute nothing |
+| `neighbourhood_preservation(G)`| ✓   | ✓   | **per-component** weighted by convex-hull area (paper §3.3) |
+| `node_edge_occlusion(G)`       | ✓ ³ | ≈ ⁴ | none — per edge, independent |
+| `node_resolution(G)`           | ✓   | ✓   | none — global min/max over all pairs |
+| `node_uniformity(G)`           | ✓   | ✗ ¹ | none — single grid over all nodes |
+
+¹ *Uses the axis-aligned bounding box (AR, NU) or the horizontal/vertical
+  axes (EO). Rotating the drawing rotates the bbox / axes away from the
+  drawing, so the value changes. The 90° special case is an identity for
+  EO and NU, and a reciprocal for AR (`h/w ↔ w/h`, same score).*
+
+² *Generic rotations preserve the crossing set. Measure-zero rotations
+  that make two edges collinear change the count; pick any non-degenerate
+  angle and EC is invariant.*
+
+³ *NEO is scale-invariant when node radii scale with the coordinates. Raw
+  scaling of `x`/`y` without also scaling `radius` / `width` / `height`
+  changes the penalty zone and the result.*
+
+⁴ *NEO's penalty zone is `epsilon_fraction × bbox_diagonal`, so the bbox
+  diagonal of a rotated drawing (which is generally larger than the
+  unrotated one for the axis-aligned box) changes ε slightly. In
+  practice the shift is small; the metric is not strictly
+  rotation-invariant.*
 
 ### I/O
 
@@ -169,9 +204,6 @@ write_graphml(G, path) -> None
 read_drawing(path)     -> nx.Graph
 write_drawing(G, path) -> None
 convert(src_path, dst_path) -> None
-
-gml_to_geg(path)     -> nx.Graph
-graphml_to_geg(path) -> nx.Graph
 ```
 
 ### Rendering and geometry helpers
