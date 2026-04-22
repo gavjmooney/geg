@@ -132,3 +132,30 @@ Paper §3.3 specifies weighted-sum-by-convex-hull-area for KSM and NP, and warns
 - [ ] `edge_crossings_bezier` still reimplements acute-angle-between-vectors inline via svgpathtools complex-number tangents. It's the experimental / slow variant, so not urgent. Replacing with `_geometry.angle_between` would require adapting to complex-number inputs or converting first.
 - [ ] `geg_parser.approximate_edge_polyline` still lives alongside `_paths.flatten_path_to_polyline`. Both are used (AR calls `approximate_edge_polyline` indirectly via its own SVG-path traversal; the new helpers are fine). Could consolidate further but no metric impact.
 - [x] New metrics (the "1–2 additions" flagged in `library_update_brief.md`) — **Node-Edge Occlusion** is now in (`geg.node_edge_occlusion`). Definition is a cubic soft-overlap penalty, radius-aware (`max(0, d - r) / ε`). Default `epsilon_fraction = 0.02` (lowered from the initial 0.03 to account for the radius buffer). **Formula confirmed and finalised.**
+
+---
+
+## Manual-verification viewer — drawing-quality issues
+
+Surfaced during the first end-to-end review pass over `manual_verification/review.json`. The *tests* are correct; these are SVG-rendering issues in `tests/_manual_verification.py` that make visual verification harder than it should be. Low priority, non-blocking for metric correctness.
+
+### MV-1 — Nodes-only tests render as faceted component stacks
+- **Where:** `tests/_manual_verification.py::_split_far_components` (and surrounding layout code).
+- **What:** Tests that only populate node `x`/`y` (no edges) — common in `test_aspect_ratio`, `test_node_uniformity`, `test_node_resolution` — get split into one mini-panel per isolated node, so the actual *geometry under test* (a horizontal line, a unit square, a collinear triple) is not visible. The reviewer cannot tell from the SVG whether nodes are on a line, clustered, or squared off.
+- **Flagged by reviewer on:**
+  `test_aspect_ratio` (9): `TestBasic_test_unit_square`, `TestDegenerate_test_horizontal_line_of_nodes`, `TestDegenerate_test_vertical_line_of_nodes`, `TestInvariants_test_swapping_width_and_height_gives_same_value`, `TestInvariants_test_translation_invariant`, `TestInvariants_test_uniform_scale_invariant`, `TestRatios_test_tall_rectangle_1_to_3`, `TestRatios_test_unit_square`, `TestRatios_test_wide_rectangle_2_to_1`.
+  `test_node_uniformity` (5): `TestKnownDeviations_test_two_nodes_with_2d_bbox_perfect`, `test_two_nodes_same_cell_is_zero`, `test_three_clustered_one_corner_2x2`, `test_horizontal_stack_even_spread`, `test_horizontal_stack_clumped`.
+  `test_node_resolution` (2): `TestPerfectResolution_test_equilateral_triangle`, `TestKnownRatios_test_collinear_0_1_3`.
+- **Fix direction:** Detect edgeless inputs and skip `_split_far_components`; draw all nodes in a single coordinate frame with a visible bbox outline. Optionally draft connecting segments just for rendering (with styling that makes clear they are not graph edges).
+
+### MV-2 — Invariance tests have no before/after comparison
+- **Where:** `tests/_manual_verification.py` graph-extraction stage.
+- **What:** Translation / rotation / scale invariance tests declare two graphs `G1` and `G2` that differ only by the transformation under test, but the viewer only renders one. A reviewer can't see that the transformation actually ran or what the "after" looked like.
+- **Flagged by reviewer on:** `test_edge_crossings/TestInvariants_test_arbitrary_rotation_invariant`, `test_translation_invariant`, `test_uniform_scale_invariant`.
+- **Fix direction:** Extract all nx.Graph locals from the test body, not just the first; render paired SVGs when multiple graphs are present with a suffix (`_before` / `_after` or `_G1` / `_G2`).
+
+### MV-3 — node_edge_occlusion drawings don't reflect asserted radii
+- **Where:** `tests/_manual_verification.py` node rendering.
+- **What:** Tests for radius-fallback logic pin expected overlap values based on test-supplied `width`/`height` attributes, but the viewer renders default-sized node glyphs ignoring those attributes. The reviewer can't visually verify that the edge actually passes within the node's claimed radius or that a "rectangular" node is rectangular.
+- **Flagged by reviewer on:** `test_node_edge_occlusion/TestRadiusFallback_test_width_height_drive_occlusion`, `TestRadiusFallback_test_rectangular_node_uses_max_dimension`; also "could use an image" on `TestNoOcclusion_test_star_k1_4_legs_dont_pass_over_other_leaves`, `TestNoOcclusion_test_equilateral_triangle`.
+- **Fix direction:** Honour per-node `width`/`height` node attrs when rendering. Emit distinct glyphs for circular vs rectangular nodes (pick max dimension for radius, or draw the literal rectangle).
