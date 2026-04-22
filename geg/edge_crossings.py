@@ -79,6 +79,20 @@ def _polyline_to_segments(poly):
     return [(a, b) for a, b in zip(poly, poly[1:])]
 
 
+def _path_or_straight(G: nx.Graph, u, v, data: dict) -> str:
+    """Return the edge's stored `path` attr, or a synthesised straight-line
+    `M u.x,u.y L v.x,v.y` when the attr is missing — matches the fallback
+    used by `to_svg` and `edge_polyline` so programmatically-built graphs
+    (where the user skipped `path=`) behave the same as graphs loaded via
+    `read_geg` / `read_graphml` / `read_gml`."""
+    p = data.get("path")
+    if p:
+        return p
+    ux, uy = G.nodes[u]["x"], G.nodes[u]["y"]
+    vx, vy = G.nodes[v]["x"], G.nodes[v]["y"]
+    return f"M{ux},{uy} L{vx},{vy}"
+
+
 def edge_crossings(
     G: nx.Graph,
     return_crossings: bool = False,
@@ -121,10 +135,12 @@ def edge_crossings(
         # Adaptive (default).
         tol = flatness_tol_from_fraction(G, flatness_fraction)
         polys = [_polyline_to_segments(
-            flatten_path_adaptive(d["path"], tol)
-        ) for _, _, d in edges]
+            flatten_path_adaptive(_path_or_straight(G, u, v, d), tol)
+        ) for u, v, d in edges]
     else:
-        polys = [flatten_path_to_segments(d["path"], samples_per_curve) for _, _, d in edges]
+        polys = [flatten_path_to_segments(
+            _path_or_straight(G, u, v, d), samples_per_curve
+        ) for u, v, d in edges]
 
     crossings: List[CrossingHit] = []
     for (i, _), (j, _) in itertools.combinations(enumerate(edges), 2):
@@ -164,7 +180,7 @@ def edge_crossings_bezier(
         for n, data in G.nodes(data=True)
     }
     edges = list(G.edges(data=True))
-    paths: List[Path] = [parse_path(d["path"]) for (_, _, d) in edges]
+    paths: List[Path] = [parse_path(_path_or_straight(G, u, v, d)) for (u, v, d) in edges]
 
     seen = {(i, j): [] for i, j in itertools.combinations(range(len(edges)), 2)}
     crossings: List[CrossingHit] = []

@@ -2,6 +2,23 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.2] — 2026-04-22
+
+### Fixed
+
+- **`edge_crossings`** no longer raises `KeyError: 'path'` when an edge
+  is missing the `path` attribute. Same root cause and fix shape as the
+  0.2.1 `angular_resolution` patch — three more `d["path"]` sites in
+  `edge_crossings.py` (the adaptive and fixed-N flattening paths, plus
+  `edge_crossings_bezier`) were missed by the initial audit. A
+  module-local `_path_or_straight(G, u, v, data)` helper synthesises
+  `M u.x,u.y L v.x,v.y` when the attr is missing, matching the fallback
+  used by `to_svg` and `edge_polyline`.
+- New regression tests `TestMissingPathAttr` in
+  `tests/test_edge_crossings.py` pin K4-square and two-crossing-edges
+  cases against the known-correct EC values (2/3 and 0), so any future
+  reintroduction of `d["path"]` would fail here too.
+
 ## [0.2.1] — 2026-04-22
 
 ### Fixed

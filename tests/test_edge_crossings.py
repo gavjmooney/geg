@@ -195,3 +195,37 @@ class TestInvariants:
         assert edge_crossings(self._k4_square(base)) == pytest.approx(
             edge_crossings(self._k4_square(rotated))
         )
+
+
+class TestMissingPathAttr:
+    """Programmatically-built graphs (no `path` attr on any edge) should not
+    crash `edge_crossings`. A straight-line fallback is synthesised from
+    the node coordinates — same behaviour as `to_svg` and `edge_polyline`.
+    """
+
+    def test_k4_square_without_path_attrs(self):
+        """Unit-square K4 with no edge path attrs. The two diagonals still
+        cross once. c_max = C(6,2) - sum_v C(deg,2) = 15 - 4*3 = 3, so
+        EC = 1 - 1/3 = 2/3."""
+        import networkx as nx
+        G = nx.Graph()
+        for n, (x, y) in {"a": (0.0, 0.0), "b": (1.0, 0.0),
+                          "c": (1.0, 1.0), "d": (0.0, 1.0)}.items():
+            G.add_node(n, x=x, y=y)
+        G.add_edges_from([
+            ("a", "b"), ("b", "c"), ("c", "d"), ("d", "a"),
+            ("a", "c"), ("b", "d"),
+        ])
+        assert edge_crossings(G) == pytest.approx(2.0 / 3.0)
+
+    def test_two_crossing_edges_without_path_attrs(self):
+        # Two straight edges crossing at (0, 0), no `path` attrs. One
+        # edge-pair candidate, one crossing → EC = 0.
+        import networkx as nx
+        G = nx.Graph()
+        G.add_node("a", x=-1.0, y=-1.0)
+        G.add_node("b", x=1.0, y=1.0)
+        G.add_node("c", x=-1.0, y=1.0)
+        G.add_node("d", x=1.0, y=-1.0)
+        G.add_edges_from([("a", "b"), ("c", "d")])
+        assert edge_crossings(G) == pytest.approx(0.0)
