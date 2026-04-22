@@ -9,6 +9,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import networkx as nx
 import pytest
 
 
@@ -592,3 +593,71 @@ class TestBatchCSV:
                 "--input-dir", str(tmp_path / "does-not-exist"),
                 "--output-csv", str(tmp_path / "unused.csv"),
             ])
+
+
+class TestEveryMetricOnPathlessGraph:
+    """Catch-all: every advertised metric must succeed on graphs whose
+    edges carry no `path` attribute. Pins the fix from 0.2.1 (AR) and
+    0.2.2 (EC x3) against any future regression that re-introduces a
+    raw `d["path"]` / `data["path"]` / `attrs["path"]` subscript. Callers
+    that build graphs programmatically via `nx.add_edge(u, v)` without
+    passing a `path=` kwarg hit this path; all metrics should synthesise
+    a straight-line `M u.x,u.y L v.x,v.y` internally (same fallback as
+    `to_svg`).
+    """
+
+    _METRICS = [
+        "angular_resolution", "aspect_ratio", "crossing_angle",
+        "edge_crossings", "edge_length_deviation", "edge_orthogonality",
+        "kruskal_stress", "neighbourhood_preservation",
+        "node_edge_occlusion", "node_resolution", "node_uniformity",
+    ]
+
+    @staticmethod
+    def _triangle_no_paths():
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=1.0, y=0.0)
+        G.add_node("c", x=0.0, y=1.0)
+        G.add_edges_from([("a", "b"), ("b", "c"), ("a", "c")])
+        return G
+
+    @staticmethod
+    def _k4_no_paths():
+        G = nx.Graph()
+        for n, xy in {"a": (0.0, 0.0), "b": (1.0, 0.0),
+                      "c": (1.0, 1.0), "d": (0.0, 1.0)}.items():
+            G.add_node(n, x=xy[0], y=xy[1])
+        G.add_edges_from([
+            ("a", "b"), ("b", "c"), ("c", "d"), ("d", "a"),
+            ("a", "c"), ("b", "d"),
+        ])
+        return G
+
+    @staticmethod
+    def _disconnected_no_paths():
+        G = nx.Graph()
+        for n, xy in {"a": (0.0, 0.0), "b": (1.0, 0.0),
+                      "c": (5.0, 5.0), "d": (6.0, 5.0)}.items():
+            G.add_node(n, x=xy[0], y=xy[1])
+        G.add_edges_from([("a", "b"), ("c", "d")])
+        return G
+
+    @pytest.mark.parametrize("metric_name", _METRICS)
+    @pytest.mark.parametrize("graph_fn", [
+        _triangle_no_paths.__func__,
+        _k4_no_paths.__func__,
+        _disconnected_no_paths.__func__,
+    ])
+    def test_metric_runs_without_path_attrs(self, metric_name, graph_fn):
+        import geg as geg_pkg
+        G = graph_fn()
+        fn = getattr(geg_pkg, metric_name)
+        v = fn(G)
+        # Every canonical metric returns a float in [0, 1]; loose-bound
+        # check so any future metric that drifts out of range also trips.
+        assert isinstance(v, float)
+        assert 0.0 - 1e-9 <= v <= 1.0 + 1e-9, (
+            f"{metric_name} returned {v} on {graph_fn.__name__} — "
+            "out of the [0, 1] contract"
+        )
