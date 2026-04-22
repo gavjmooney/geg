@@ -7,6 +7,7 @@ def node_uniformity(
     G: nx.Graph,
     *,
     bbox: Optional[Tuple[float, float, float, float]] = None,
+    include_curves: bool = False,
 ) -> float:
     """
     Node placement uniformity in [0, 1] using a grid occupancy model.
@@ -15,17 +16,22 @@ def node_uniformity(
     score is 1 minus the normalized L1 deviation of per-cell counts from the
     ideal mean N/(rows*cols). Degenerate single-point drawings return 1.0.
 
-    The grid is computed on the **node-position bounding box only** — curves
-    bulging outside the node hull do not stretch the grid. NU is a statement
-    about how evenly the nodes themselves are distributed; including curve
-    samples would dilute cell occupancy counts when a drawing has large
-    curved edges relative to its node spread.
+    The grid defaults to the **node-position bounding box only** — curves
+    bulging outside the node hull do not stretch the grid. This treats NU
+    as a statement about how evenly the nodes themselves are distributed,
+    regardless of curve geometry. Set `include_curves=True` to use the full
+    curve-promoted drawing bounding box instead, which penalises layouts
+    whose nodes cluster in one corner of a drawing while edge curves span
+    the full canvas.
 
     Args:
         G: A NetworkX graph with node coordinates 'x' and 'y'.
-        bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
-            positions. If None, computed via
-            `geg_parser.get_bounding_box(G, promote=False)`.
+        bbox: Optional pre-computed (min_x, min_y, max_x, max_y). If None,
+            computed via `geg_parser.get_bounding_box(G, promote=include_curves)`.
+            A caller-supplied `bbox` always wins over `include_curves`.
+        include_curves: When True and no `bbox` is supplied, use the
+            curve-promoted drawing bbox so that edge curves extending beyond
+            the node hull expand the grid's extent. Default False.
 
     Returns:
         A float in [0, 1], where higher indicates more uniform distribution.
@@ -36,9 +42,8 @@ def node_uniformity(
     if N <= 1:
         return 1.0
 
-    # Node-only bounding box — curves deliberately excluded.
     if bbox is None:
-        bbox = geg_parser.get_bounding_box(G, promote=False)
+        bbox = geg_parser.get_bounding_box(G, promote=include_curves)
     x_min, y_min, x_max, y_max = bbox
     width, height = x_max - x_min, y_max - y_min
 
