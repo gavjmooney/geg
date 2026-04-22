@@ -125,7 +125,7 @@ geometry additionally read the edge `path` attribute.
 | `angular_resolution(G)`             | §3.2 eq. 1  | Uniformity of angles between incident edges at each vertex.              |
 | `aspect_ratio(G)`                   | §3.2        | Closeness of the drawing's bounding box to a square.                     |
 | `crossing_angle(G)`                 | §3.2 eq. 2  | Closeness of edge-crossing angles to 90° (or `ideal_angle=`).            |
-| `edge_crossings(G)`                 | §3.2 eq. 3  | Ratio of observed crossings to the Euler lower bound.                    |
+| `edge_crossings(G)`                 | §3.2 eq. 3  | Observed crossings normalised by the max number of non-incident edge pairs (`C(m,2) − Σ_v C(deg(v),2)`). |
 | `edge_length_deviation(G)`          | §3.2 eq. 4  | Uniformity of drawn edge lengths.                                        |
 | `edge_orthogonality(G)`             | §3.2 eq. 5–6| Alignment of edge segments to horizontal/vertical (length-weighted).     |
 | `kruskal_stress(G)`                 | §3.2 eq. 7  | Isotonic-regression stress between graph-theoretic and layout distances. |
