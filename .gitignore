@@ -46,3 +46,5 @@ Thumbs.db
 # Manual test-verification SVGs (regenerable via `python -m tests._manual_verification`).
 manual_verification/
 
+METRIC_DELTAS.md
+
