@@ -27,7 +27,7 @@ import math
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 import svgpathtools
-from svgpathtools import Line, Path
+from svgpathtools import Arc, CubicBezier, Line, Path, QuadraticBezier
 
 from ._geometry import distance
 
@@ -38,6 +38,82 @@ Segment2D = Tuple[Point, Point]
 def parse_path(path_str: str) -> Path:
     """Parse an SVG path string into an svgpathtools Path."""
     return svgpathtools.parse_path(path_str)
+
+
+def reverse_svg_path(path_str: str) -> str:
+    """Reverse an SVG path string while preserving geometry."""
+    path = parse_path(path_str)
+    reversed_segments = []
+    for seg in reversed(path):
+        if isinstance(seg, Line):
+            reversed_segments.append(Line(seg.end, seg.start))
+        elif isinstance(seg, CubicBezier):
+            reversed_segments.append(
+                CubicBezier(seg.end, seg.control2, seg.control1, seg.start)
+            )
+        elif isinstance(seg, QuadraticBezier):
+            reversed_segments.append(QuadraticBezier(seg.end, seg.control, seg.start))
+        elif isinstance(seg, Arc):
+            reversed_segments.append(
+                Arc(seg.end, seg.radius, seg.rotation, seg.large_arc,
+                    not seg.sweep, seg.start)
+            )
+        else:
+            reversed_segments.append(seg.reversed())
+    return Path(*reversed_segments).d()
+
+
+def _seg_with_start(seg, new_start: complex):
+    if isinstance(seg, Line):
+        return Line(new_start, seg.end)
+    if isinstance(seg, CubicBezier):
+        return CubicBezier(new_start, seg.control1, seg.control2, seg.end)
+    if isinstance(seg, QuadraticBezier):
+        return QuadraticBezier(new_start, seg.control, seg.end)
+    if isinstance(seg, Arc):
+        return Arc(new_start, seg.radius, seg.rotation, seg.large_arc, seg.sweep, seg.end)
+    return seg
+
+
+def _seg_with_end(seg, new_end: complex):
+    if isinstance(seg, Line):
+        return Line(seg.start, new_end)
+    if isinstance(seg, CubicBezier):
+        return CubicBezier(seg.start, seg.control1, seg.control2, new_end)
+    if isinstance(seg, QuadraticBezier):
+        return QuadraticBezier(seg.start, seg.control, new_end)
+    if isinstance(seg, Arc):
+        return Arc(seg.start, seg.radius, seg.rotation, seg.large_arc, seg.sweep, new_end)
+    return seg
+
+
+def snap_path_to_endpoints(
+    path_str: str, u_xy: Point, v_xy: Point,
+) -> str:
+    """Return `path_str` oriented and snapped so its first point is exactly
+    `u_xy` and its last point is exactly `v_xy`.
+
+    Chooses orientation by whichever endpoint is closer to `u_xy` — so a
+    path that was stored (or extracted) with source/target swapped is
+    transparently reversed. Interior control points are left untouched;
+    only the first segment's `start` and the last segment's `end` are
+    replaced. For typical cases this is a sub-pixel correction that closes
+    the visible stroke/node gap without reshaping the curve.
+    """
+    path = parse_path(path_str)
+    if not path:
+        return path_str
+    start = path[0].start
+    end = path[-1].end
+    d_start_u = math.hypot(start.real - u_xy[0], start.imag - u_xy[1])
+    d_end_u   = math.hypot(end.real   - u_xy[0], end.imag   - u_xy[1])
+    if d_end_u < d_start_u:
+        path_str = reverse_svg_path(path_str)
+        path = parse_path(path_str)
+    segs = list(path)
+    segs[0]  = _seg_with_start(segs[0],  complex(u_xy[0], u_xy[1]))
+    segs[-1] = _seg_with_end(segs[-1],   complex(v_xy[0], v_xy[1]))
+    return Path(*segs).d()
 
 
 def _sample_segment(seg, n_samples: int) -> List[Point]:
@@ -105,6 +181,7 @@ def edge_polyline(
     *,
     flatness_tol: Optional[float] = None,
     max_depth: int = 16,
+    relative_flatness: float = 0.05,
 ) -> List[Point]:
     """Convenience: an edge's path flattened to a polyline with endpoints
     snapped exactly to `source` and `target`.
@@ -123,7 +200,10 @@ def edge_polyline(
     if not path_str:
         return [source, target]
     if flatness_tol is not None:
-        poly = flatten_path_adaptive(path_str, flatness_tol, max_depth=max_depth)
+        poly = flatten_path_adaptive(
+            path_str, flatness_tol, max_depth=max_depth,
+            relative_flatness=relative_flatness,
+        )
     else:
         poly = flatten_path_to_polyline(path_str, samples_per_curve=samples_per_curve)
     if poly:
@@ -176,11 +256,24 @@ def _adaptive_flatten_segment(
     seg,
     flatness_tol: float,
     max_depth: int,
+    relative_flatness: float = 0.0,
 ) -> List[Point]:
     """Recursively subdivide `seg` (a non-Line svgpathtools segment) using
     max-point-to-chord distance at multiple interior sample points as the
     flatness proxy. Returns a list of (x, y) points starting at
     `seg.point(0)` and ending at `seg.point(1)`.
+
+    Two stopping criteria are available and are OR'd (i.e. both have to
+    pass for the segment to be considered flat enough):
+
+    - **Absolute**: `max_d <= flatness_tol`. The usual drawing-wide
+      tolerance (scale-invariant when `flatness_tol` is derived from a
+      fraction of the node-bbox diagonal).
+    - **Relative** (`relative_flatness > 0`): `max_d <= relative_flatness
+      * chord_length`. Ensures tightly-curved *short* segments still get
+      subdivided — without this, a small arc whose absolute bulge sits
+      under `flatness_tol` terminates the recursion after zero or one
+      subdivisions even when it visibly curves relative to its own size.
 
     The recursion sticks with the original `seg`'s parametrisation — each
     call works on a [t0, t1] sub-range of [0, 1] rather than cropped
@@ -198,6 +291,9 @@ def _adaptive_flatten_segment(
     def recurse(t0: float, t1: float, depth: int) -> List[Point]:
         p0 = seg.point(t0)
         p1 = seg.point(t1)
+        chord_len = math.hypot(p1.real - p0.real, p1.imag - p0.imag)
+        rel_tol = relative_flatness * chord_len if relative_flatness > 0 else math.inf
+        effective_tol = min(flatness_tol, rel_tol)
         max_d = 0.0
         for u in _FLATNESS_PROBE_TS:
             t = t0 + u * (t1 - t0)
@@ -207,9 +303,9 @@ def _adaptive_flatten_segment(
             )
             if d > max_d:
                 max_d = d
-                if max_d > flatness_tol:
+                if max_d > effective_tol:
                     break  # already failed; no need to probe further
-        if max_d <= flatness_tol or depth >= max_depth:
+        if max_d <= effective_tol or depth >= max_depth:
             return [(p0.real, p0.imag), (p1.real, p1.imag)]
         tm = 0.5 * (t0 + t1)
         left = recurse(t0, tm, depth + 1)
@@ -224,17 +320,26 @@ def flatten_path_adaptive(
     path: "str | Path",
     flatness_tol: float,
     max_depth: int = 16,
+    *,
+    relative_flatness: float = 0.05,
 ) -> List[Point]:
     """Curvature-aware flattening: adaptively subdivide each non-Line segment
-    until the midpoint-to-chord deviation drops below `flatness_tol`.
+    until the midpoint-to-chord deviation drops below whichever of two
+    criteria is tighter:
+
+      • the absolute `flatness_tol`, and
+      • `relative_flatness` times the sub-segment's chord length.
+
+    The relative criterion ensures that tightly-curved *short* segments
+    still receive enough subdivisions — without it, a small arc whose
+    absolute bulge sits below `flatness_tol` terminates after zero or one
+    subdivisions even when it visibly curves relative to its own size.
+
+    Pass `relative_flatness=0.0` to disable the relative criterion and
+    recover the absolute-only behaviour used prior to v0.3.x.
 
     Lines are kept as their exact two endpoints (as in `flatten_path_to_polyline`).
     Consecutive segments share their join point (emitted once).
-
-    High-curvature regions naturally recurse deeper; nearly-straight regions
-    terminate after one midpoint check. The output is a polyline whose
-    maximum pointwise deviation from the true curve is ≤ `flatness_tol`
-    (modulo the `max_depth` guard).
 
     Args:
         path: SVG path string or svgpathtools.Path.
@@ -245,6 +350,10 @@ def flatten_path_adaptive(
         max_depth: Recursion cap. 2^max_depth subsegments per curve segment
             is the worst case; default 16 is generous for well-behaved
             curves and prevents pathological recursion on zero-area loops.
+        relative_flatness: Secondary stopping criterion, expressed as a
+            fraction of the current sub-chord length. Default 0.05 (a
+            sub-segment keeps splitting while its bulge exceeds 5% of its
+            own chord). Pass 0.0 to disable and use `flatness_tol` alone.
 
     Returns:
         List of (x, y) points; first = path start, last = path end.
@@ -261,7 +370,10 @@ def flatten_path_adaptive(
                 (seg.end.real, seg.end.imag),
             ]
         else:
-            pts = _adaptive_flatten_segment(seg, flatness_tol, max_depth)
+            pts = _adaptive_flatten_segment(
+                seg, flatness_tol, max_depth,
+                relative_flatness=relative_flatness,
+            )
         if not poly:
             poly.extend(pts)
         else:

@@ -321,9 +321,23 @@ def to_svg(
             )
 
     # 2. Edges.
+    from ._paths import snap_path_to_endpoints as _snap
     for u, v, attrs in G.edges(data=True):
         path_str = attrs.get("path")
-        if path_str:
+        if path_str and u in G.nodes and v in G.nodes:
+            # Orient + snap so the rendered stroke starts at u and ends at
+            # v, even if the stored path is reversed or its endpoints drift
+            # a few units off the node centres (common in extracted GEGs).
+            u_xy = (G.nodes[u]["x"], G.nodes[u]["y"])
+            v_xy = (G.nodes[v]["x"], G.nodes[v]["y"])
+            try:
+                path_str = _snap(path_str, u_xy, v_xy)
+            except Exception:
+                # Fall back to the raw path if snapping fails for any
+                # reason (corrupt path, unsupported segment type, …).
+                pass
+            d = _scale_path(path_str, scale)
+        elif path_str:
             d = _scale_path(path_str, scale)
         else:
             x0 = G.nodes[u]["x"] * scale
@@ -383,7 +397,7 @@ def curves_promotion(
     G: nx.Graph,
     samples_per_curve: Optional[int] = None,
     *,
-    flatness_fraction: float = 0.005,
+    flatness_fraction: float = 0.003,
 ) -> nx.Graph:
     """
     Promote curved/polyline edges by splitting them into straight segments.
@@ -408,7 +422,7 @@ def curves_promotion(
             When `None` (default) uses adaptive flattening.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the node
             bbox diagonal. Ignored when `samples_per_curve` is set.
-            Default 0.005.
+            Default 0.003.
 
     Returns:
         A new graph H with promoted segments.
@@ -469,15 +483,13 @@ def curves_promotion(
             flatness_tol=flatness_tol,
         )
 
-        # If the interior is “backwards,” flip it:
-        if len(pts) > 2:
-            x0, y0 = G.nodes[u]['x'], G.nodes[u]['y']
-            x1, y1 = G.nodes[v]['x'], G.nodes[v]['y']
-            px, py = pts[1]   # first interior sample
-            # if that sample is closer to v than to u, we’re reversed
-            if math.hypot(px - x0, py - y0) > math.hypot(px - x1, py - y1):
-                interior = pts[1:-1][::-1]
-                pts = [(x0, y0)] + interior + [(x1, y1)]
+        # `edge_polyline` already orients the polyline to start at `source`
+        # (= u) and end at `target` (= v), so no further reordering is
+        # needed here. A previous version of this function re-checked
+        # orientation by comparing `pts[1]` to u and v, but that heuristic
+        # fires incorrectly on short / asymmetric curves where a legitimate
+        # interior sample is closer to v than to u, turning a correctly-
+        # traversed polyline into a zigzag. Trust `edge_polyline`.
 
         # Build the node-sequence [u, seg1, seg2, …, v]
         node_seq = [u]

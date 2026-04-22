@@ -91,7 +91,7 @@ def node_edge_occlusion(
     samples_per_curve: Optional[int] = None,
     *,
     bbox: Optional[Tuple[float, float, float, float]] = None,
-    flatness_fraction: float = 0.005,
+    flatness_fraction: float = 0.003,
 ) -> float:
     """Node-Edge Occlusion score in [0, 1] (1 = no occlusion).
 
@@ -113,7 +113,7 @@ def node_edge_occlusion(
             When `None` (default) the metric uses adaptive flattening.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the
             node-bbox diagonal. Ignored when `samples_per_curve` is set.
-            Default 0.005.
+            Default 0.003.
         bbox: Optional pre-computed (min_x, min_y, max_x, max_y) over node
             positions. If None, computed via
             `get_bounding_box(G, promote=False)`. NEO uses the node-only

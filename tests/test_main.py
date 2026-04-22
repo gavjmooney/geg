@@ -292,8 +292,10 @@ class TestMultigraphMetricValues:
         # second arc; the new 0.5 is the correct answer.
         assert aspect_ratio(G) == pytest.approx(0.5)
         # EO: both arcs have the same mean segment deviation (~0.41);
-        # averaged over 2 edges gives the same single-arc value.
-        assert edge_orthogonality(G) == pytest.approx(0.410469, abs=1e-5)
+        # averaged over 2 edges gives the same single-arc value. Pinned
+        # to flatness_fraction=0.005 so the expected value is stable
+        # against changes to the library's default sampling density.
+        assert edge_orthogonality(G, flatness_fraction=0.005) == pytest.approx(0.410469, abs=1e-5)
         # Metrics indifferent to multigraph-ness.
         assert gabriel_ratio_edges(G) == pytest.approx(1.0)
         assert node_edge_occlusion(G) == pytest.approx(1.0)

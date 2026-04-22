@@ -636,3 +636,192 @@ class TestDispatchPriority:
         H_both = curves_promotion(G, samples_per_curve=100, flatness_fraction=0.0001)
         H_fixed = curves_promotion(G, samples_per_curve=100)
         assert H_both.number_of_nodes() == H_fixed.number_of_nodes()
+
+
+class TestSourceTargetOrientation:
+    """Path endpoints should map to `u` and `v` regardless of how the GEG
+    file stored them. This guards against a class of extraction bugs where
+    source/target were swapped, and against small endpoint drift (rounding
+    in the extractor) that would otherwise leave a visible stroke/node gap
+    in the rendered SVG.
+    """
+
+    def test_reverse_svg_path_preserves_geometry(self):
+        """reverse_svg_path + reverse_svg_path is identity (modulo
+        serialisation noise). Uses a mixed line/cubic path."""
+        d = "M0,0 L2,0 C3,1 5,1 6,0"
+        back = P.reverse_svg_path(P.reverse_svg_path(d))
+        # Sampled points line up — serialisation can reformat numbers.
+        orig_poly = P.flatten_path_to_polyline(d, samples_per_curve=12)
+        back_poly = P.flatten_path_to_polyline(back, samples_per_curve=12)
+        for a, b in zip(orig_poly, back_poly):
+            assert a == pytest.approx(b, abs=1e-9)
+
+    def test_snap_path_forwards_noop_when_exact(self):
+        """When start/end already match u/v exactly, snap is an identity
+        (geometry-wise) — the first-point distance check is satisfied."""
+        snapped = P.snap_path_to_endpoints("M0,0 L10,0", (0, 0), (10, 0))
+        poly = P.flatten_path_to_polyline(snapped, samples_per_curve=2)
+        assert poly[0] == pytest.approx((0.0, 0.0))
+        assert poly[-1] == pytest.approx((10.0, 0.0))
+
+    def test_snap_path_reverses_flipped_path(self):
+        """Path stored target→source. snap_path_to_endpoints should detect
+        the flip (end is closer to u than start is) and reverse."""
+        snapped = P.snap_path_to_endpoints("M10,0 L0,0", (0, 0), (10, 0))
+        poly = P.flatten_path_to_polyline(snapped, samples_per_curve=2)
+        assert poly[0] == pytest.approx((0.0, 0.0))
+        assert poly[-1] == pytest.approx((10.0, 0.0))
+
+    def test_snap_path_snaps_noisy_endpoints(self):
+        """Extraction noise: path starts at (0.2, -0.1) instead of (0,0)
+        and ends at (9.9, 0.05) instead of (10,0). Snap closes both gaps
+        exactly."""
+        snapped = P.snap_path_to_endpoints(
+            "M0.2,-0.1 L9.9,0.05", (0, 0), (10, 0)
+        )
+        poly = P.flatten_path_to_polyline(snapped, samples_per_curve=2)
+        assert poly[0] == pytest.approx((0.0, 0.0))
+        assert poly[-1] == pytest.approx((10.0, 0.0))
+
+    def test_snap_path_preserves_cubic_controls(self):
+        """Snapping endpoints must not reshape the curve — interior
+        control points are left alone. Verify the midpoint stays put
+        after an endpoint-only snap."""
+        d = "M0,0 C0,5 10,5 10,0"
+        before = P.flatten_path_to_polyline(d, samples_per_curve=5)
+        snapped = P.snap_path_to_endpoints(d, (0, 0), (10, 0))
+        after = P.flatten_path_to_polyline(snapped, samples_per_curve=5)
+        # Endpoints identical (no drift to snap); interior samples identical.
+        for a, b in zip(before, after):
+            assert a == pytest.approx(b, abs=1e-9)
+
+    def test_edge_polyline_handles_flipped_path(self):
+        """`edge_polyline(source, target, path)` should yield a polyline
+        that starts at source and ends at target even when the underlying
+        path was stored target→source."""
+        poly = P.edge_polyline(
+            source=(0.0, 0.0),
+            target=(10.0, 0.0),
+            path_str="M10,0 L0,0",
+            samples_per_curve=5,
+        )
+        assert poly[0] == pytest.approx((0.0, 0.0))
+        assert poly[-1] == pytest.approx((10.0, 0.0))
+
+    def test_angular_resolution_robust_to_endpoint_drift(self):
+        """`orient_svg_path_for_node` (used by AR) should reverse a
+        flipped path whose endpoints are a few units off the node
+        positions — exercising the distance-based (rather than exact)
+        orientation logic."""
+        import networkx as nx
+        from geg import angular_resolution_min_angle
+
+        # Two-node graph whose edge path is stored target→source with
+        # sub-unit endpoint drift in both endpoints (typical extraction
+        # noise). Expected AR for a two-node graph is a single edge at
+        # each vertex, degree 1 → skipped (AR defined as 1.0 vacuously).
+        # Add a third incident edge at node 'a' to make AR meaningful.
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        G.add_node("c", x=0.0, y=10.0)
+        # Reversed path + endpoint noise on the a-b edge.
+        G.add_edge("a", "b", path="M9.95,-0.02 L0.03,0.01")
+        # Straight, correctly-oriented a-c edge.
+        G.add_edge("a", "c", path="M0,0 L0,10")
+        # At node a: tangents are along +x (to b) and +y (to c), 90° apart.
+        # Ideal gap = 360°/2 = 180°, min gap ≈ 90° → deficit ≈ 0.5 → AR ≈ 0.5.
+        # Noise in the endpoints tilts the b-side tangent by ~0.2°, so
+        # the expected value is near 0.5 but not exact — a loose tolerance
+        # (5e-3) covers the noise while still catching a full mis-orient
+        # (which would give ~0 or far from 0.5).
+        assert angular_resolution_min_angle(G) == pytest.approx(0.5, abs=5e-3)
+
+    def test_curves_promotion_no_zigzag_on_asymmetric_curve(self):
+        """Regression: a short cubic whose first interior sample is closer
+        to `v` than to `u` must still produce a monotonically-traversed
+        polyline in curves_promotion — not a zigzag from a redundant
+        "backwards" heuristic that second-guessed `edge_polyline`.
+
+        Real-world trigger: `GD11_403-414_1.geg` edge -56 (nodes 7 → 8).
+        `edge_polyline` correctly produced [7, mid1, mid2, 8] with
+        decreasing x, but the first interior sample (closer to node 8)
+        made the check flip the interior, producing a zigzag chain
+        visible as an extra segment in the rendered promoted graph.
+        """
+        import networkx as nx
+        from geg import curves_promotion
+
+        G = nx.Graph()
+        G.add_node("u", x=1059.32, y=667.71)
+        G.add_node("v", x=998.28,  y=660.94)
+        # Two cubics joining at (1024.94, 652.22); x is monotonically
+        # decreasing along the curve. Interior samples legitimately
+        # sit closer to v than to u.
+        G.add_edge(
+            "u", "v", polyline=True,
+            path=(
+                "M1059.32,667.71 "
+                "C1046.62,660.07 1034.30,654.23 1024.94,652.22 "
+                "C1012.43,649.54 1005.24,653.70 998.28,660.94"
+            ),
+        )
+        H = curves_promotion(G)
+        # Collect the promoted chain u → seg → … → v via segment node x
+        # coordinates. Must be strictly monotone in x (no zigzag).
+        segs = sorted(
+            (int(str(n).rsplit("_", 1)[-1]), d["x"])
+            for n, d in H.nodes(data=True)
+            if d.get("is_segment")
+        )
+        xs = [G.nodes["u"]["x"]] + [x for _, x in segs] + [G.nodes["v"]["x"]]
+        for i in range(len(xs) - 1):
+            assert xs[i] > xs[i + 1], (
+                f"non-monotonic chain (zigzag) at pos {i}: x={xs[i]:.2f} "
+                f"then x={xs[i+1]:.2f}; full chain={xs}"
+            )
+
+    def test_to_svg_orients_flipped_path(self):
+        """`to_svg` should snap the rendered `d` string so its first
+        coordinate is the `u` endpoint, even if the GEG's path was stored
+        target→source. Read the emitted SVG and check the first M
+        coordinate matches u (after scaling)."""
+        import networkx as nx
+        import re
+        import tempfile
+        from pathlib import Path as _Path
+        from geg import to_svg
+
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=10.0, y=0.0)
+        # Flipped path stored as b→a.
+        G.add_edge("a", "b", path="M10,0 L0,0")
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".svg", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp_path = _Path(tmp.name)
+        try:
+            to_svg(G, str(tmp_path), width=800, margin=40)
+            svg = tmp_path.read_text(encoding="utf-8")
+        finally:
+            tmp_path.unlink()
+
+        # Extract the first edge path's `d` attr.
+        m = re.search(r'<path[^>]*\sd="([^"]+)"', svg)
+        assert m is not None
+        d = m.group(1)
+        # Parse the first M's x coord; it should correspond to node a's
+        # x (=0 * scale) rather than node b's.
+        m2 = re.match(r'M\s*([0-9eE.+-]+)\s*,', d)
+        assert m2 is not None
+        first_x = float(m2.group(1))
+        # With margin=40 and auto-fit, node a at x=0 maps to pixel x=40
+        # and node b at x=10 maps to pixel x=760. So the oriented path's
+        # first M should be close to 40, not 760.
+        assert abs(first_x - 40.0) < abs(first_x - 760.0), (
+            f"rendered path starts at x={first_x}, expected near 40 (node a); "
+            "orientation fix did not fire"
+        )

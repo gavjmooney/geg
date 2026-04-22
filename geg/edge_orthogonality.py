@@ -56,7 +56,7 @@ def edge_orthogonality(
     G: nx.Graph,
     samples_per_curve: Optional[int] = None,
     *,
-    flatness_fraction: float = 0.005,
+    flatness_fraction: float = 0.003,
 ) -> float:
     """Edge orthogonality metric in [0, 1], per paper §3.2 eq. (5)-(6).
 
@@ -83,7 +83,7 @@ def edge_orthogonality(
             When `None` (default) the metric uses adaptive flattening.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the
             node-position bbox diagonal. Ignored when `samples_per_curve`
-            is set. Default 0.005 (0.5% deviation).
+            is set. Default 0.003 (0.3% deviation).
 
     Returns:
         Float in [0, 1], 1 = all edges axis-aligned.

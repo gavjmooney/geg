@@ -85,7 +85,7 @@ def edge_crossings(
     samples_per_curve: Optional[int] = None,
     min_angle_tol: float = 2.5,
     *,
-    flatness_fraction: float = 0.005,
+    flatness_fraction: float = 0.003,
 ) -> Union[float, Tuple[float, List[CrossingHit]]]:
     """Count edge crossings and compute the EC metric (paper §3.2 eq. (3)).
 
@@ -109,7 +109,7 @@ def edge_crossings(
         min_angle_tol: Minimum crossing angle (degrees) to keep a crossing.
         flatness_fraction: Adaptive-mode tolerance as a fraction of the
             node bbox diagonal. Ignored when `samples_per_curve` is set.
-            Default 0.005.
+            Default 0.003.
 
     Returns:
         Either the EC score in [0, 1], or (score, crossings) where each

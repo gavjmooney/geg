@@ -15,43 +15,36 @@ import math
 from typing import Hashable, List
 
 import networkx as nx
-from svgpathtools import Arc, CubicBezier, Line, Path, QuadraticBezier
+from svgpathtools import Line
 
-from ._paths import parse_path
-
-
-def reverse_svg_path(path_str: str) -> str:
-    """Reverse an SVG path string while preserving geometry."""
-    path = parse_path(path_str)
-    reversed_segments = []
-    for seg in reversed(path):
-        if isinstance(seg, Line):
-            reversed_segments.append(Line(seg.end, seg.start))
-        elif isinstance(seg, CubicBezier):
-            reversed_segments.append(
-                CubicBezier(seg.end, seg.control2, seg.control1, seg.start)
-            )
-        elif isinstance(seg, QuadraticBezier):
-            reversed_segments.append(QuadraticBezier(seg.end, seg.control, seg.start))
-        elif isinstance(seg, Arc):
-            reversed_segments.append(
-                Arc(seg.end, seg.radius, seg.rotation, seg.large_arc,
-                    not seg.sweep, seg.start)
-            )
-        else:
-            reversed_segments.append(seg.reversed())
-    return Path(*reversed_segments).d()
+from ._paths import parse_path, reverse_svg_path
 
 
 def orient_svg_path_for_node(path_str: str, node_x: float, node_y: float, tol: float = 1e-6) -> str:
-    """Return `path_str` oriented to start at `(node_x, node_y)`; reversed if needed."""
+    """Return `path_str` oriented so the first-segment `start` is the endpoint
+    closest to `(node_x, node_y)`.
+
+    Uses a distance comparison rather than an exact-match check so extraction
+    noise (endpoints off by a few units) does not silently give the wrong
+    tangent, and "flipped" paths from GEG files where source/target were
+    swapped during extraction are corrected transparently.
+
+    `tol` is retained for the fast-path exact match but is no longer a
+    pass/fail gate: if neither endpoint matches exactly, orientation is
+    decided by whichever endpoint is numerically closer to the target node.
+    """
     path = parse_path(path_str)
     if not path:
         return path_str
     start = path[0].start
     if abs(start.real - node_x) < tol and abs(start.imag - node_y) < tol:
         return path_str
-    return reverse_svg_path(path_str)
+    end = path[-1].end
+    d_start = math.hypot(start.real - node_x, start.imag - node_y)
+    d_end   = math.hypot(end.real   - node_x, end.imag   - node_y)
+    if d_end < d_start:
+        return reverse_svg_path(path_str)
+    return path_str
 
 
 def get_outbound_edges(G: nx.Graph, node: Hashable) -> List:
