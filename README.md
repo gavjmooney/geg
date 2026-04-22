@@ -5,7 +5,7 @@
 full SVG-path geometry of every edge. The GEG package is useful for graph
 drawing researchers who wish to evaluate the aesthetic/readability quality of
 their drawings, particularly for comparing large sets of drawings across
-different graph sizes/structures and layout regimes/scales.
+different graph sizes/structures and layout algorithms/scales.
 
 GEG is developed and maintained by Gavin J. Mooney. (https://www.gavjmooney.com).
 
@@ -14,7 +14,8 @@ This package contains:
 - a reader/writer for the GEG format,
 - converters to/from GML and GraphML,
 - an SVG renderer,
-- and implementations of every readability metric in the GD 2025 canonical set.
+- wrappers for NetworkX topological measures plus additional properties,
+- and implementations of normalised, scale-invariant readability metrics applicable to both straight-line drawings and those with complex edge geometries (e.g. curves, bends, polylines).
 
 Distribution name on PyPI is `geg-metrics`; the import name is `geg`.
 
@@ -34,6 +35,8 @@ Gavin J. Mooney, Tim Hegemann, Alexander Wolff, Michael Wybrow, and Helen C. Pur
 Every metric returns a float in **[0, 1]**, with **1 = best**. Every metric
 accepts any input drawing — straight, polyline, or curved edges — and dispatches
 on the geometry internally; there is one function per metric.
+
+Note: as of version 0.2.0, some metric values have shifted slightly from those presented in the paper above as a consequence of changes to the adaptive sampling of curves. The distributions remain comparable.
 
 ## Installation
 
@@ -120,19 +123,19 @@ All metrics take a `networkx.Graph` with `x` / `y` node
 attributes and return a float in `[0, 1]`. Metrics that depend on edge
 geometry additionally read the edge `path` attribute.
 
-| Function                            | Paper §/eq. | What it measures                                                         |
-| ----------------------------------- | ----------- | ------------------------------------------------------------------------ |
-| `angular_resolution(G)`             | §3.2 eq. 1  | Uniformity of angles between incident edges at each vertex.              |
-| `aspect_ratio(G)`                   | §3.2        | Closeness of the drawing's bounding box to a square.                     |
-| `crossing_angle(G)`                 | §3.2 eq. 2  | Closeness of edge-crossing angles to 90° (or `ideal_angle=`).            |
-| `edge_crossings(G)`                 | §3.2 eq. 3  | Observed crossings normalised by the max number of non-incident edge pairs (`C(m,2) − Σ_v C(deg(v),2)`). |
-| `edge_length_deviation(G)`          | §3.2 eq. 4  | Uniformity of drawn edge lengths.                                        |
-| `edge_orthogonality(G)`             | §3.2 eq. 5–6| Alignment of edge segments to horizontal/vertical (length-weighted).     |
-| `kruskal_stress(G)`                 | §3.2 eq. 7  | Isotonic-regression stress between graph-theoretic and layout distances. |
-| `neighbourhood_preservation(G)`     | §3.2 eq. 8  | Jaccard overlap of topological k-neighbourhoods vs. k-nearest in layout. |
-| `node_resolution(G)`                | §3.2 eq. 9  | Ratio of the minimum to the maximum pairwise node distance.              |
-| `node_uniformity(G)`                | §3.2 eq. 10 | Evenness of node placement under grid occupancy.                         |
-| `node_edge_occlusion(G)`            | ext.        | Cubic-soft penalty for edges passing too close to non-incident nodes.    |
+| Function                            | Paper §/eq. | What it measures                                                            |
+| ----------------------------------- | ----------- | --------------------------------------------------------------------------- |
+| `angular_resolution(G)`             | §3.2 eq. 1  | Uniformity of angles between incident edges at each vertex.                 |
+| `aspect_ratio(G)`                   | §3.2        | Closeness of the drawing's bounding box to a square.                        |
+| `crossing_angle(G)`                 | §3.2 eq. 2  | Closeness of edge-crossing angles to 90° (or `ideal_angle=`).               |
+| `edge_crossings(G)`                 | §3.2 eq. 3  | Observed crossings normalised by the max number of non-incident edge pairs. |
+| `edge_length_deviation(G)`          | §3.2 eq. 4  | Uniformity of drawn edge lengths.                                           |
+| `edge_orthogonality(G)`             | §3.2 eq. 5–6| Alignment of edge segments to horizontal/vertical (length-weighted).        |
+| `kruskal_stress(G)`                 | §3.2 eq. 7  | Isotonic-regression stress between graph-theoretic and layout distances.    |
+| `neighbourhood_preservation(G)`     | §3.2 eq. 8  | Jaccard overlap of topological k-neighbourhoods vs. k-nearest in layout.    |
+| `node_resolution(G)`                | §3.2 eq. 9  | Ratio of the minimum to the maximum pairwise node distance.                 |
+| `node_uniformity(G)`                | §3.2 eq. 10 | Evenness of node placement under grid occupancy.                            |
+| `node_edge_occlusion(G)`            | ext.        | Cubic-soft penalty for edges passing too close to non-incident nodes.       |
 
 `node_edge_occlusion` is a library extension not in the GD 2025 paper;
 it is introduced in a forthcoming publication.
@@ -160,12 +163,12 @@ node_uniformity(G, *, bbox=None, include_curves=False) -> float
 | `angular_resolution(G)`        | ✓   | ✓   | tangent read from the path at the vertex end; no flattening | none needed — per-vertex, skips degree ≤ 1 |
 | `aspect_ratio(G)`              | ✓   | ✗ ¹ | **curve-promoted bbox** — curves extend the drawing's footprint | none — single bbox over the whole drawing |
 | `crossing_angle(G)`            | ✓   | ✓   | adaptive per-edge flattening (via `edge_crossings`) | none — per-crossing |
-| `edge_crossings(G)`            | ✓   | ✓ ² | adaptive per-edge flattening (`flatness_fraction`) for intersection tests | none — counts crossings globally |
+| `edge_crossings(G)`            | ✓   | ✓   | adaptive per-edge flattening (`flatness_fraction`) for intersection tests | none — counts crossings globally |
 | `edge_length_deviation(G)`     | ✓   | ✓   | exact arc length from the path (svgpathtools integration) | none — uses the edge-length distribution |
 | `edge_orthogonality(G)`        | ✓   | ✗ ¹ | adaptive per-edge flattening; length-weighted per-segment deviation | none — per-edge, independent |
 | `kruskal_stress(G)`            | ✓   | ✓   | **ignored** — uses node coords + graph-theoretic distance | **per-component** weighted by convex-hull area (paper §3.3); singleton components contribute nothing |
 | `neighbourhood_preservation(G)`| ✓   | ✓   | **ignored** | **per-component** weighted by convex-hull area (paper §3.3) |
-| `node_edge_occlusion(G)`       | ✓ ³ | ≈ ⁴ | adaptive per-edge flattening; node-to-polyline distance; ε uses node-only bbox | none — per edge, independent |
+| `node_edge_occlusion(G)`       | ✓ ² | ≈ ³ | adaptive per-edge flattening; node-to-polyline distance; ε uses node-only bbox | none — per edge, independent |
 | `node_resolution(G)`           | ✓   | ✓   | **ignored** — node coords only | none — global min/max over all pairs |
 | `node_uniformity(G)`           | ✓   | ✗ ¹ | node-only bbox by default; `include_curves=True` switches to curve-promoted bbox | none — single grid over all nodes |
 
@@ -174,15 +177,11 @@ node_uniformity(G, *, bbox=None, include_curves=False) -> float
   drawing, so the value changes. The 90° special case is an identity for
   EO and NU, and a reciprocal for AR (`h/w ↔ w/h`, same score).*
 
-² *Generic rotations preserve the crossing set. Measure-zero rotations
-  that make two edges collinear change the count; pick any non-degenerate
-  angle and EC is invariant.*
-
-³ *NEO is scale-invariant when node radii scale with the coordinates. Raw
+² *NEO is scale-invariant when node radii scale with the coordinates. Raw
   scaling of `x`/`y` without also scaling `radius` / `width` / `height`
   changes the penalty zone and the result.*
 
-⁴ *NEO's penalty zone is `epsilon_fraction × bbox_diagonal`, so the bbox
+³ *NEO's penalty zone is `epsilon_fraction × bbox_diagonal`, so the bbox
   diagonal of a rotated drawing (which is generally larger than the
   unrotated one for the axis-aligned box) changes ε slightly. In
   practice the shift is small; the metric is not strictly
