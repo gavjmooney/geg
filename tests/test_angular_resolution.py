@@ -239,3 +239,36 @@ class TestInvariants:
         assert angular_resolution_min_angle(G1) == pytest.approx(
             angular_resolution_min_angle(G2)
         )
+
+
+class TestMissingPathAttr:
+    """Edges constructed without a `path` attribute (typical of graphs
+    built programmatically via `nx.add_edge` without a GEG file) must not
+    crash AR. The metric synthesises a straight-line `M u.x,u.y L v.x,v.y`
+    on the fly to match what `to_svg` already does for rendering.
+    """
+
+    def test_triangle_without_path_attrs(self):
+        # Right-triangle: edges at 0° and 90° at node 'a' → gap of 90°,
+        # ideal gap = 360°/2 = 180° → deviation 0.5 → AR = 0.5.
+        # Node 'b' has degree 1, skipped. Node 'c' likewise (degree 1).
+        # Only node 'a' has degree ≥ 2, so it drives the score.
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=1.0, y=0.0)
+        G.add_node("c", x=0.0, y=1.0)
+        G.add_edge("a", "b")      # no `path` attr
+        G.add_edge("a", "c")      # no `path` attr
+        assert angular_resolution_min_angle(G) == pytest.approx(0.5, abs=1e-9)
+
+    def test_mixed_edges_some_with_path_some_without(self):
+        # Same triangle but one edge has a path and one doesn't. Score
+        # should still be 0.5 — the synthesised straight-line fallback is
+        # identical to what the explicit `path` would encode.
+        G = nx.Graph()
+        G.add_node("a", x=0.0, y=0.0)
+        G.add_node("b", x=1.0, y=0.0)
+        G.add_node("c", x=0.0, y=1.0)
+        G.add_edge("a", "b", path="M0,0 L1,0")
+        G.add_edge("a", "c")  # fallback kicks in
+        assert angular_resolution_min_angle(G) == pytest.approx(0.5, abs=1e-9)

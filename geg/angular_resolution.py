@@ -69,7 +69,16 @@ def _incident_edge_angles(G: nx.Graph, node: Hashable) -> List[float]:
     raw_paths = []
     for u, v, *rest in get_outbound_edges(G, node):
         data = rest[-1]
-        raw = data["path"]
+        raw = data.get("path")
+        if not raw:
+            # Synthesise a straight-line path from the endpoint coords so
+            # programmatically-built graphs (where the user didn't set a
+            # `path` attr) match what read_geg / to_svg would produce for
+            # a straight edge. Matches the fallback used by to_svg and by
+            # other geometry-aware metrics.
+            ux, uy = G.nodes[u]["x"], G.nodes[u]["y"]
+            vx, vy = G.nodes[v]["x"], G.nodes[v]["y"]
+            raw = f"M{ux},{uy} L{vx},{vy}"
         raw_paths.append(raw)
         if u == v:
             raw_paths.append(reverse_svg_path(raw))

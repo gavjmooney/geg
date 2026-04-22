@@ -2,6 +2,20 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] — 2026-04-22
+
+### Fixed
+
+- **`angular_resolution`** no longer raises `KeyError: 'path'` when an
+  edge is missing the `path` attribute. A straight-line fallback
+  `M u.x,u.y L v.x,v.y` is synthesised from the endpoint coordinates,
+  matching what `to_svg` already does for the same case. Affects graphs
+  constructed programmatically via `nx.Graph.add_edge(u, v)` without an
+  explicit path; graphs loaded via `read_geg`, `read_graphml`, or
+  `read_gml` always carry a `path` attribute and were unaffected.
+  Pre-existing bug from 0.1.x, surfaced while smoke-testing the 0.2.0
+  wheel.
+
 ## [0.2.0] — 2026-04-22 (`dev/metrics-refactor-tdd`)
 
 This release folds in every change made on `dev/metrics-refactor-tdd`
