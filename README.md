@@ -153,21 +153,21 @@ node_resolution(G) -> float
 node_uniformity(G, *, bbox=None, include_curves=False) -> float
 ```
 
-#### Invariances and disconnected-graph handling
+#### Invariances, curve handling, and disconnected-graph handling
 
-| Metric | Scale-invariant | Rotation-invariant | Disconnected handling |
-| ------------------------------ | --- | --- | --- |
-| `angular_resolution(G)`        | ✓   | ✓   | none needed — per-vertex, skips degree ≤ 1 |
-| `aspect_ratio(G)`              | ✓   | ✗ ¹ | none — single bbox over the whole drawing |
-| `crossing_angle(G)`            | ✓   | ✓   | none — per-crossing |
-| `edge_crossings(G)`            | ✓   | ✓ ² | none — counts crossings globally |
-| `edge_length_deviation(G)`     | ✓   | ✓   | none — uses the edge-length distribution |
-| `edge_orthogonality(G)`        | ✓   | ✗ ¹ | none — per-edge, independent |
-| `kruskal_stress(G)`            | ✓   | ✓   | **per-component** weighted by convex-hull area (paper §3.3); singleton components contribute nothing |
-| `neighbourhood_preservation(G)`| ✓   | ✓   | **per-component** weighted by convex-hull area (paper §3.3) |
-| `node_edge_occlusion(G)`       | ✓ ³ | ≈ ⁴ | none — per edge, independent |
-| `node_resolution(G)`           | ✓   | ✓   | none — global min/max over all pairs |
-| `node_uniformity(G)`           | ✓   | ✗ ¹ | none — single grid over all nodes |
+| Metric | Scale | Rotation | Curves / paths | Disconnected |
+| ------------------------------ | --- | --- | --- | --- |
+| `angular_resolution(G)`        | ✓   | ✓   | tangent read from the path at the vertex end; no flattening | none needed — per-vertex, skips degree ≤ 1 |
+| `aspect_ratio(G)`              | ✓   | ✗ ¹ | **curve-promoted bbox** — curves extend the drawing's footprint | none — single bbox over the whole drawing |
+| `crossing_angle(G)`            | ✓   | ✓   | adaptive per-edge flattening (via `edge_crossings`) | none — per-crossing |
+| `edge_crossings(G)`            | ✓   | ✓ ² | adaptive per-edge flattening (`flatness_fraction`) for intersection tests | none — counts crossings globally |
+| `edge_length_deviation(G)`     | ✓   | ✓   | exact arc length from the path (svgpathtools integration) | none — uses the edge-length distribution |
+| `edge_orthogonality(G)`        | ✓   | ✗ ¹ | adaptive per-edge flattening; length-weighted per-segment deviation | none — per-edge, independent |
+| `kruskal_stress(G)`            | ✓   | ✓   | **ignored** — uses node coords + graph-theoretic distance | **per-component** weighted by convex-hull area (paper §3.3); singleton components contribute nothing |
+| `neighbourhood_preservation(G)`| ✓   | ✓   | **ignored** | **per-component** weighted by convex-hull area (paper §3.3) |
+| `node_edge_occlusion(G)`       | ✓ ³ | ≈ ⁴ | adaptive per-edge flattening; node-to-polyline distance; ε uses node-only bbox | none — per edge, independent |
+| `node_resolution(G)`           | ✓   | ✓   | **ignored** — node coords only | none — global min/max over all pairs |
+| `node_uniformity(G)`           | ✓   | ✗ ¹ | node-only bbox by default; `include_curves=True` switches to curve-promoted bbox | none — single grid over all nodes |
 
 ¹ *Uses the axis-aligned bounding box (AR, NU) or the horizontal/vertical
   axes (EO). Rotating the drawing rotates the bbox / axes away from the
@@ -187,6 +187,15 @@ node_uniformity(G, *, bbox=None, include_curves=False) -> float
   unrotated one for the axis-aligned box) changes ε slightly. In
   practice the shift is small; the metric is not strictly
   rotation-invariant.*
+
+Terminology: **"adaptive per-edge flattening"** means the metric calls
+`_paths.edge_polyline` / `flatten_path_adaptive` (see the
+[curves_promotion section](#curves_promotion--shared-preprocessing)
+below). **"curve-promoted bbox"** means the metric uses
+`get_bounding_box(G, promote=True)`, which explodes curved edges into
+intermediate samples so the bbox encloses them. Metrics flagged
+**"ignored"** read only `x`/`y` node attributes and graph topology —
+edge geometry does not influence the score.
 
 ### I/O
 
