@@ -2,7 +2,122 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — `dev/metrics-refactor-tdd`
+## [0.2.0] — 2026-04-22 (`dev/metrics-refactor-tdd`)
+
+This release folds in every change made on `dev/metrics-refactor-tdd`
+since main (0.1.8): the TDD refactor against the GD 2025 paper
+definitions (§3.2, §3.3), the parser/I/O cleanup, the adaptive
+curvature-aware path flattener, and the path-orientation / sampling
+refinements described below. Per-fixture metric deltas against 0.1.8
+are in `METRIC_DELTAS.md`; the full catalogue of bugs fixed en route
+is in `ISSUES.md`.
+
+### Added (2026-04-22 session)
+
+- **`node_uniformity(G, *, include_curves=False)`** — opt into the
+  curve-promoted drawing bbox (rather than the default node-only bbox)
+  so drawings whose edge curves span more canvas than the node cluster
+  are penalised appropriately. Default behaviour is unchanged; existing
+  scores stay bit-identical.
+- **`_paths.snap_path_to_endpoints(path_str, u_xy, v_xy)`** — orient-
+  and-snap helper used by `to_svg` to ensure rendered strokes
+  terminate exactly at `u` and `v`, even when the source GEG stored
+  the path in `target → source` direction or with sub-pixel endpoint
+  drift (common in extracted GEGs). Chooses orientation by which
+  endpoint is closer to `u`; only the first/last point are replaced,
+  interior control points are left intact so the curve is not
+  reshaped.
+- **`_paths.reverse_svg_path(path_str)`** — moved from
+  `angular_resolution.py` to `_paths.py` as a shared utility
+  (imported by both `angular_resolution` and `snap_path_to_endpoints`).
+- **`flatten_path_adaptive(..., relative_flatness=0.05)`** — new
+  secondary stopping criterion in the adaptive flattener, tripped
+  when a sub-segment's bulge exceeds `relative_flatness · chord_length`.
+  Small arcs whose absolute bulge sits below `flatness_fraction ·
+  bbox_diagonal` now still get subdivided if they curve visibly
+  relative to their own size. Pass `relative_flatness=0.0` to recover
+  the absolute-only pre-0.2.0 behaviour. Default applied through
+  `edge_polyline`, so it propagates into every metric that uses the
+  shared flattener.
+
+### Changed (2026-04-22 session)
+
+- **`flatness_fraction` default lowered 0.005 → 0.003** on
+  `edge_crossings`, `edge_orthogonality`, `node_edge_occlusion`, and
+  `curves_promotion`. Combined with the new relative-flatness
+  criterion, curved drawings get denser samples (roughly +10 – 20%
+  more polyline points per edge), with samples concentrated on tight
+  arcs.
+- **`to_svg` orients and snaps each edge path before emitting.** The
+  rendered `d` string now starts at `u`'s coordinates and ends at
+  `v`'s, regardless of how the GEG stored source/target. Visible
+  effect: strokes always terminate cleanly at node centres.
+- **`angular_resolution.orient_svg_path_for_node`** is now
+  distance-based (picks the endpoint of the path that's closest to
+  the target node) rather than requiring exact-match within 1e-6.
+  Handles extraction noise and target → source path direction
+  uniformly.
+
+### Fixed (2026-04-22 session)
+
+- **`curves_promotion`** no longer zigzags the promoted polyline on
+  short or asymmetric curves. A stale "backwards" heuristic that
+  compared `pts[1]` to `u` and `v` was second-guessing
+  `edge_polyline`'s (correct) orientation logic and flipping a
+  correctly-traversed polyline whenever the first interior sample
+  happened to be closer to `v`. Removed; orientation is now delegated
+  entirely to `edge_polyline`, which uses a distance check at the
+  full-polyline level. Regression covered by
+  `TestSourceTargetOrientation::test_curves_promotion_no_zigzag_on_asymmetric_curve`.
+
+### Tests (2026-04-22 session)
+
+- **`TestSourceTargetOrientation`** (8 new cases) in `test_paths.py`
+  pinning the flip + drift + snap behaviour end-to-end: reverse-path
+  round-trip, snap no-op on exact endpoints, snap reverses flipped
+  paths, snap closes noisy endpoints, snap preserves cubic controls,
+  `edge_polyline` respects source/target, angular_resolution returns
+  the correct tangent on a flipped + noisy path, `to_svg`'s rendered
+  `d` starts at `u`.
+- **`test_node_uniformity.TestIncludeCurvesKwarg`** (4 new cases)
+  exercising default vs `include_curves=True` dispatch and kwarg
+  precedence.
+- **`test_crossing_angle`** refactored to compute crossing angles
+  from real graph geometry via the full `edge_crossings →
+  crossing_angle` pipeline instead of injecting pre-computed
+  `(position, angle)` tuples. `TestDefensiveClamp` retains two cases
+  for the `crossings=` kwarg's clamp behaviour.
+- **`test_gabriel_ratio`** dedup'd (removed one genuine duplicate),
+  renamed two 0-returning nodes-variant cases with dispositive
+  docstrings that spell out the contrasting formula branches, and
+  gained `test_intermediate_value_no_discount` as a regression guard
+  against a future change that silently returned 0 for the nodes
+  variant.
+- **`test_main::test_two_parallel_arcs`** explicitly pins
+  `flatness_fraction=0.005` so its expected EO value is stable
+  against changes to the library's default sampling density.
+
+### Docs (2026-04-22 session)
+
+- **`README.md`** rewritten in networkx style: installation,
+  quickstart recipes, full API-reference table (11 canonical metrics
+  + topological properties), a graph data-model table
+  (`x`/`y`/`path`/`polyline`/etc.), and a brief `curves_promotion`
+  overview that explains adaptive sampling. `curved_edge_orthogonality`,
+  `edge_crossings_bezier`, `gabriel_ratio_*`, and
+  `angular_resolution_avg_angle` are no longer advertised in the
+  reference — they remain importable for backwards compatibility but
+  users should call the unified `edge_orthogonality`,
+  `edge_crossings`, etc.
+- **`ISSUES.md`** gains an MV-1/MV-2/MV-3 section for
+  manual-verification viewer visualisation issues (nodes-only tests
+  rendered as faceted component stacks, invariance tests with no
+  before/after comparison, NEO drawings that don't reflect asserted
+  radii). Fix-directions recorded; not blocking the 0.2.0 release.
+
+---
+
+## Previously staged for release under 0.2.0 (`dev/metrics-refactor-tdd`, rolled into 2026-04-22)
 
 Curvature-aware adaptive path flattening becomes the default. Replaces
 the Phase-2 / 0.2.0 default of `samples_per_curve = 100` per non-Line
@@ -96,7 +211,7 @@ set, not strict TVCG reproduction.
 
 ---
 
-## [0.2.0] — 2026-04-21 (`dev/metrics-refactor-tdd`)
+## [0.2.0-rc1] — 2026-04-21 (`dev/metrics-refactor-tdd`, superseded by 0.2.0 above)
 
 TDD refactor of the metrics library against the GD 2025 paper definitions (paper §3.2, §3.3), plus a parser/I/O cleanup. Per-fixture value deltas against the previous release are in `METRIC_DELTAS.md`; known-issue catalogue is in `ISSUES.md`.
 
