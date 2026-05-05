@@ -241,6 +241,58 @@ class TestInvariants:
         )
 
 
+class TestDroppedIncidentEdges:
+    """Some incident edges have no usable tangent (degenerate Line, NaN
+    tangent, etc.) and are silently skipped by `_incident_edge_angles`,
+    leaving `k < deg(v)` valid angles at the vertex. Surfaced in a
+    1.12M-row metrics sweep across 16 layout algorithms: 49 rows had
+    `angular_resolution > 1` (max 3.246), all in pivot-MDS (47) and
+    spectral (2) layouts on dense TUDataset graphs (COLLAB, IMDB-BINARY).
+    """
+
+    def test_coincident_neighbours_min_angle_in_range(self):
+        # `v` has nominal degree 4, but two neighbours sit exactly on v's
+        # coordinates — their incident edges are zero-length lines and are
+        # dropped from the tangent computation. The remaining two valid
+        # edges are nearly opposite (gaps ~[180, 180]). Pre-fix, ideal =
+        # 360/4 = 90° while min_gap ~= 180°, giving a per-vertex term of
+        # (90 - 180)/90 = -1 and AR ~= 1.99.
+        G = nx.Graph()
+        for n, (x, y) in [("v", (0.0, 0.0)), ("a", (1.0, 0.0)),
+                           ("b", (-1.0, 0.01)), ("c", (0.0, 0.0)),
+                           ("d", (0.0, 0.0))]:
+            G.add_node(n, x=x, y=y)
+        for u, w in [("v", "a"), ("v", "b"), ("v", "c"), ("v", "d")]:
+            G.add_edge(u, w)
+        ar = angular_resolution_min_angle(G)
+        assert 0.0 <= ar <= 1.0
+        assert angular_resolution_avg_angle(G) <= 1.0
+        assert angular_resolution_avg_angle(G) >= 0.0
+
+    def test_nan_tangent_path_min_angle_in_range(self):
+        # Different drop mechanism: one incident edge's path has finite
+        # endpoints whose normalisation overflows to NaN, so
+        # `unit_tangent` returns a NaN complex and the `math.isfinite`
+        # guard skips it. `v` ends up with k=2 valid angles though
+        # deg(v)=3, and the two valid neighbours are nearly opposite, so
+        # the surviving gaps are ~[180, 180]. Pre-fix that means
+        # min_gap (~180) > ideal=360/3=120, the per-vertex term goes
+        # negative, and AR exceeds 1.
+        G = nx.Graph()
+        for n, (x, y) in [("v", (0.0, 0.0)), ("a", (1.0, 0.0)),
+                           ("b", (-1.0, 0.01)), ("c", (1e308, 1e308))]:
+            G.add_node(n, x=x, y=y)
+        coords = {n: (G.nodes[n]["x"], G.nodes[n]["y"]) for n in G}
+        G.add_edge("v", "a", path=_straight("v", "a", coords))
+        G.add_edge("v", "b", path=_straight("v", "b", coords))
+        # Path with NaN-producing endpoints — finite to `parse_path` but
+        # `unit_tangent` returns nan+nanj and the metric drops it.
+        G.add_edge("v", "c", path="M1e308,1e308 L2e308,2e308")
+        ar = angular_resolution_min_angle(G)
+        assert 0.0 <= ar <= 1.0
+        assert 0.0 <= angular_resolution_avg_angle(G) <= 1.0
+
+
 class TestMissingPathAttr:
     """Edges constructed without a `path` attribute (typical of graphs
     built programmatically via `nx.add_edge` without a GEG file) must not
