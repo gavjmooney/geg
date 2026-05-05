@@ -133,7 +133,9 @@ def angular_resolution_min_angle(G: nx.Graph) -> float:
         angles = _incident_edge_angles(G, node)
         if len(angles) < 2:
             continue
-        ideal = 360.0 / G.degree[node]
+        # Ideal partitions the actual valid incidences (k = len(angles));
+        # using deg(v) breaks the metric when degenerate edges are dropped.
+        ideal = 360.0 / len(angles)
         min_gap = min(_gaps_around_vertex(angles))
         total += (ideal - min_gap) / ideal
         count += 1
@@ -155,7 +157,9 @@ def angular_resolution_avg_angle(G: nx.Graph) -> float:
         angles = _incident_edge_angles(G, node)
         if len(angles) < 2:
             continue
-        ideal = 360.0 / G.degree[node]
+        # Ideal partitions the actual valid incidences (k = len(angles));
+        # using deg(v) breaks the metric when degenerate edges are dropped.
+        ideal = 360.0 / len(angles)
         gaps = _gaps_around_vertex(angles)
         mean_abs_dev = sum(abs(g - ideal) for g in gaps) / len(gaps)
         total += mean_abs_dev / ideal

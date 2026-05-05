@@ -2,6 +2,28 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] — 2026-05-05
+
+### Fixed
+
+- **`angular_resolution_min_angle`** and **`angular_resolution_avg_angle`**
+  no longer return values outside `[0, 1]` when a vertex has degenerate
+  incident edges (zero-length lines from coincident neighbours, or paths
+  whose `unit_tangent` returns NaN/raises). Both variants computed
+  `ideal = 360° / deg(v)` while `_incident_edge_angles` silently dropped
+  unusable edges, so the partition scored `k < deg(v)` valid gaps
+  against the wrong ideal — `min_gap` could exceed `ideal`, the
+  per-vertex term went negative, and AR exceeded 1. Surfaced in a
+  1.12M-row metrics sweep across 16 layout algorithms: 49 rows had
+  `angular_resolution > 1` (max 3.246), all in `pivot-MDS` (47) and
+  `spectral` (2) layouts on dense TUDataset graphs (COLLAB,
+  IMDB-BINARY). Fixed by deriving `ideal` from `len(angles)` (the
+  partition the metric is actually scoring) rather than `deg(v)`.
+  Vertices whose incident edges all parse cleanly score identically
+  to before. New regression tests `TestDroppedIncidentEdges` in
+  `tests/test_angular_resolution.py` pin the coincident-neighbour and
+  NaN-tangent cases.
+
 ## [0.2.2] — 2026-04-22
 
 ### Fixed
