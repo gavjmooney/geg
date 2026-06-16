@@ -76,6 +76,8 @@ class TestKnownPenaltyCentreOnly:
 
     def test_node_at_gap_half_epsilon(self):
         # c at (2, 0.04) → d=0.04, r=0 → gap/ε = 0.5 → penalty = 0.125.
+        # `fallback_radius_fraction=0.0` keeps c a dimensionless point so the
+        # gap is the bare centre-to-line distance.
         G = _layout(
             {"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.04)},
             [("a", "b")],
@@ -85,7 +87,9 @@ class TestKnownPenaltyCentreOnly:
         epsilon = 0.02 * diag
         expected_penalty = (1.0 - 0.04 / epsilon) ** 3
         expected = 1.0 - expected_penalty
-        assert node_edge_occlusion(G) == pytest.approx(expected, rel=1e-9)
+        assert node_edge_occlusion(
+            G, fallback_radius_fraction=0.0
+        ) == pytest.approx(expected, rel=1e-9)
 
     def test_node_directly_on_edge_is_full_penalty(self):
         # c on edge → d=0, r=0 → penalty = 1 → score = 0.
@@ -110,10 +114,16 @@ class TestRadiusAware:
         # Same position as TestKnownPenaltyCentreOnly, but c has radius 0.02.
         # Without radius: d=0.04 → gap=0.04. With radius 0.02: gap=0.02.
         # Penalty (no r) = (1 - 0.5)^3 = 0.125.  With r: (1 - 0.25)^3 = 0.421875.
+        # Disable the fallback footprint so "without" is a bare point (r=0),
+        # isolating the effect of the explicit radius.
         coords = {"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.04)}
         edges = [("a", "b")]
-        without = node_edge_occlusion(_layout(coords, edges))
-        with_r = node_edge_occlusion(_layout(coords, edges, radii={"c": 0.02}))
+        without = node_edge_occlusion(
+            _layout(coords, edges), fallback_radius_fraction=0.0
+        )
+        with_r = node_edge_occlusion(
+            _layout(coords, edges, radii={"c": 0.02}), fallback_radius_fraction=0.0
+        )
         assert with_r < without
 
     def test_radius_disk_straddling_line_gives_full_penalty(self):
@@ -180,8 +190,13 @@ class TestEpsilonFraction:
     def test_larger_fraction_amplifies_penalty(self):
         coords = {"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.04)}
         G = _layout(coords, [("a", "b")])
-        tight = node_edge_occlusion(G, epsilon_fraction=0.02)
-        loose = node_edge_occlusion(G, epsilon_fraction=0.05)
+        # Pin r=0 so the comparison isolates epsilon_fraction.
+        tight = node_edge_occlusion(
+            G, epsilon_fraction=0.02, fallback_radius_fraction=0.0
+        )
+        loose = node_edge_occlusion(
+            G, epsilon_fraction=0.05, fallback_radius_fraction=0.0
+        )
         assert loose < tight  # wider penalty zone → smaller score
 
     def test_explicit_radius_matches_old_formula_when_r_zero(self):
@@ -193,7 +208,9 @@ class TestEpsilonFraction:
         diag = math.hypot(4.0, 0.04)
         epsilon = 0.02 * diag
         expected = 1.0 - (1.0 - 0.04 / epsilon) ** 3
-        assert node_edge_occlusion(G) == pytest.approx(expected, rel=1e-9)
+        assert node_edge_occlusion(
+            G, fallback_radius_fraction=0.0
+        ) == pytest.approx(expected, rel=1e-9)
 
 
 class TestRadiusFallback:
@@ -227,8 +244,10 @@ class TestRadiusFallback:
         assert node_edge_occlusion(G) == pytest.approx(1.0, abs=0.1)
 
     def test_rectangular_node_uses_max_dimension(self):
-        """A wide-but-thin rectangle: max(width, height) / 2 gives a disk
-        large enough to occlude."""
+        """A wide-but-thin node with no `shape` tag falls back to the
+        circumscribed disk `max(width, height) / 2`, which is large enough to
+        occlude. (Tagging the node `shape="rectangle"` switches it to the
+        shape-aware box model — see TestShapeAware.)"""
         G = nx.Graph()
         G.add_node("u", x=0.0, y=0.0)
         G.add_node("v", x=400.0, y=0.0)
@@ -237,3 +256,116 @@ class TestRadiusFallback:
         G.add_node("mid", x=200.0, y=6.0, width=40.0, height=2.0)
         G.add_edge("u", "v")
         assert node_edge_occlusion(G) == pytest.approx(0.0, abs=1e-9)
+
+
+class TestShapeAware:
+    """A node tagged `shape` ∈ {square, rectangle, rect} is modelled as the
+    axis-aligned box it is actually drawn as, so `gap` is the true
+    segment-to-rectangle distance rather than a circumscribed-disk
+    approximation."""
+
+    def test_thin_rectangle_does_not_over_occlude(self):
+        """The wide-thin node from `test_rectangular_node_uses_max_dimension`,
+        but tagged `shape="rectangle"`. Its box spans y ∈ [5, 7] (centre 6,
+        half-height 1) and never reaches the edge at y=0 — true gap = 5 — so
+        it should NOT be reported as fully occluding the way the circumscribed
+        disk (r=20) does."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        G.add_node(
+            "mid", x=200.0, y=6.0, width=40.0, height=2.0, shape="rectangle",
+        )
+        G.add_edge("u", "v")
+        # diag ≈ 400 → ε ≈ 8; gap = 5 → penalty = (1 - 5/8)^3 ≈ 0.0527.
+        diag = math.hypot(400.0, 6.0)
+        epsilon = 0.02 * diag
+        expected = 1.0 - (1.0 - 5.0 / epsilon) ** 3
+        assert node_edge_occlusion(G) == pytest.approx(expected, rel=1e-6)
+
+        # And it is dramatically less occluded than the untagged disk model.
+        G_disk = nx.Graph()
+        G_disk.add_node("u", x=0.0, y=0.0)
+        G_disk.add_node("v", x=400.0, y=0.0)
+        G_disk.add_node("mid", x=200.0, y=6.0, width=40.0, height=2.0)
+        G_disk.add_edge("u", "v")
+        assert node_edge_occlusion(G) > node_edge_occlusion(G_disk)
+
+    def test_box_straddling_edge_is_full_penalty(self):
+        """A square whose body the edge passes through → gap 0 → score 0,
+        even though the edge misses the node centre by 4 units."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        # 20×20 square (half-extent 10) centred 4 units above the edge: the
+        # box spans y ∈ [-6, 14], so the edge at y=0 cuts through it.
+        G.add_node("mid", x=200.0, y=4.0, width=20.0, height=20.0, shape="square")
+        G.add_edge("u", "v")
+        assert node_edge_occlusion(G) == pytest.approx(0.0, abs=1e-9)
+
+    def test_box_uses_size_attribute(self):
+        """Square nodes sized by `size` (the to_svg convention) rather than
+        width/height: side 20 → half-extent 10, box straddles the edge."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        G.add_node("mid", x=200.0, y=4.0, size=20.0, shape="square")
+        G.add_edge("u", "v")
+        assert node_edge_occlusion(G) == pytest.approx(0.0, abs=1e-9)
+
+    def test_box_clear_of_edge_no_penalty(self):
+        """A small square well clear of the edge → no occlusion."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        # 4×4 square centred at y=200: box bottom at y=198, ε ≈ 8 → no penalty.
+        G.add_node("mid", x=200.0, y=200.0, width=4.0, height=4.0, shape="square")
+        G.add_edge("u", "v")
+        assert node_edge_occlusion(G) == pytest.approx(1.0)
+
+    def test_ellipse_shape_uses_disk(self):
+        """`shape="ellipse"` keeps the disk model: a node 10 units off the
+        edge with width=height=30 (r=15) straddles it → full penalty."""
+        G = nx.Graph()
+        G.add_node("u", x=0.0, y=0.0)
+        G.add_node("v", x=400.0, y=0.0)
+        G.add_node(
+            "mid", x=200.0, y=10.0, width=30.0, height=30.0, shape="ellipse",
+        )
+        G.add_edge("u", "v")
+        assert node_edge_occlusion(G) == pytest.approx(0.0, abs=1e-9)
+
+
+class TestFallbackRadiusFraction:
+    """Nodes with no radius / dimensions / shape get a disk of radius
+    `fallback_radius_fraction * bbox_diagonal` so they still have a footprint
+    instead of collapsing to a point."""
+
+    def test_default_is_0_01(self):
+        import inspect
+
+        sig = inspect.signature(node_edge_occlusion)
+        assert sig.parameters["fallback_radius_fraction"].default == 0.01
+
+    def test_fallback_gives_dimensionless_node_a_footprint(self):
+        # Edge a-b along y=0; c at (2, 0.03) with no size info.
+        # diag ≈ 4 → fallback r = 0.01 * 4 ≈ 0.04 > 0.03 → c's disk straddles
+        # the edge → full penalty. With the fallback disabled (r=0) the bare
+        # centre sits 0.03 off the edge → only a partial penalty.
+        coords = {"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.03)}
+        G = _layout(coords, [("a", "b")])
+        with_fallback = node_edge_occlusion(G)
+        without_fallback = node_edge_occlusion(G, fallback_radius_fraction=0.0)
+        assert with_fallback < without_fallback
+        assert with_fallback == pytest.approx(0.0, abs=1e-9)
+
+    def test_zero_fraction_recovers_centre_to_line(self):
+        """fallback_radius_fraction=0.0 reproduces the pre-fallback formula."""
+        coords = {"a": (0.0, 0.0), "b": (4.0, 0.0), "c": (2.0, 0.04)}
+        G = _layout(coords, [("a", "b")])
+        diag = math.hypot(4.0, 0.04)
+        epsilon = 0.02 * diag
+        expected = 1.0 - (1.0 - 0.04 / epsilon) ** 3
+        assert node_edge_occlusion(
+            G, fallback_radius_fraction=0.0
+        ) == pytest.approx(expected, rel=1e-9)

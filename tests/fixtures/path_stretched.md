@@ -10,7 +10,7 @@ preservation` non-deterministic in the tie-break. Stretched spacing avoids this.
 | Metric | Expected | Derivation |
 |---|---|---|
 | AR (min/avg) | 1 | Middle vertices have degree 2 with legs at 0° and 180° → gaps 180/180 → ideal match. |
-| Asp | 1 | Height = 0. |
+| Asp | 0 | Height = 0 → paper §3.2 degenerate branch. |
 | CA | 1 | No crossings. |
 | EC | 1 | m=3, deg = [1,2,2,1], c_all=3, c_deg=(2·1+2·1)/2=2, c_max=1. Zero crossings → 1. |
 | EO | 1 | Every edge is horizontal. |

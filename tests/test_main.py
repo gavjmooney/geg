@@ -122,9 +122,14 @@ class TestComputeMetricsEdgeCases:
         result = m.compute_metrics(G)
         assert set(result.keys()) == set(m.METRIC_NAMES)
         # Vacuous graphs: every metric should return 1.0 (best / no issues)
-        # or NaN (if the metric's derivation is genuinely undefined).
+        # or NaN (if the metric's derivation is genuinely undefined). The lone
+        # exception is aspect_ratio, whose degenerate (h=0 or w=0) bounding box
+        # is defined to return 0.0 per paper §3.2.
         import math
         for name, value in result.items():
+            if name == "aspect_ratio":
+                assert value == 0.0, f"{name} = {value}"
+                continue
             assert value == 1.0 or math.isnan(value), f"{name} = {value}"
 
     def test_single_node_graph(self, m):

@@ -6,7 +6,7 @@ path a-b-c-d with lengths 1, 1, 10. One deliberately-long edge stresses ELD.
 | Metric | Expected | Derivation |
 |---|---|---|
 | AR (min/avg) | 1 | Middle vertices have degree 2 with legs at 0° and 180° → gaps [180, 180] → ideal match. |
-| Asp | 1 | h = 0 (collinear). |
+| Asp | 0 | h = 0 (collinear) → paper §3.2 degenerate branch. |
 | CA | 1 | No crossings. |
 | EC | 1 | Tree topology, no crossings. |
 | EO | 1 | All edges horizontal. |

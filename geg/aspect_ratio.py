@@ -29,7 +29,8 @@ def aspect_ratio(
             same graph to avoid re-running `curves_promotion`.
 
     Returns:
-        Float in [0, 1], 1 = square bounding box (or degenerate 1D/0D drawing).
+        Float in [0, 1], 1 = square bounding box. A degenerate 1D/0D drawing
+        (h = 0 or w = 0) returns 0 per paper §3.2.
     """
     if bbox is None:
         bbox = geg_parser.get_bounding_box(G)

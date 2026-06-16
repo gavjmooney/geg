@@ -12,7 +12,7 @@ disconnected graphs.
 | Metric | Expected | Reason |
 |---|---|---|
 | AR (min/avg) | 1 | Only `b` has degree ≥ 2; its two legs are collinear → gap 180° → perfect. Endpoints (degree 1) are excluded. |
-| Asp | 1 | Height = 0 (all nodes collinear) → paper §3.2 degenerate branch. |
+| Asp | 0 | Height = 0 (all nodes collinear) → paper §3.2 degenerate branch. |
 | CA | 1 | No crossings. |
 | EC | 1 | Three edges, no crossings; `c_max > 0`. |
 | ELD | 1 | All edges unit length. |

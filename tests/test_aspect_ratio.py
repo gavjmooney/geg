@@ -1,7 +1,7 @@
 """Tests for geg.aspect_ratio.
 
 Paper §3.2 (Asp):
-  1              if h=0 or w=0
+  0              if h=0 or w=0
   h/w            if h <= w
   w/h            otherwise
 Bounding box dimensions h, w include edge geometry (curves promoted).
@@ -24,19 +24,19 @@ def _layout(coords):
 
 class TestDegenerate:
     def test_single_node(self):
-        # Paper spec: h=0 and w=0 → Asp=1.
+        # Paper spec: h=0 and w=0 → Asp=0.
         G = _layout({"a": (0.0, 0.0)})
-        assert aspect_ratio(G) == 1.0
+        assert aspect_ratio(G) == 0.0
 
     def test_horizontal_line_of_nodes(self):
-        # All on the x-axis → h=0 → Asp=1.
+        # All on the x-axis → h=0 → Asp=0.
         G = _layout({"a": (0.0, 0.0), "b": (5.0, 0.0), "c": (-3.0, 0.0)})
-        assert aspect_ratio(G) == 1.0
+        assert aspect_ratio(G) == 0.0
 
     def test_vertical_line_of_nodes(self):
-        # All on the y-axis → w=0 → Asp=1.
+        # All on the y-axis → w=0 → Asp=0.
         G = _layout({"a": (0.0, 0.0), "b": (0.0, 5.0), "c": (0.0, -3.0)})
-        assert aspect_ratio(G) == 1.0
+        assert aspect_ratio(G) == 0.0
 
 
 class TestRatios:

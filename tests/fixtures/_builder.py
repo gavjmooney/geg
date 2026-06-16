@@ -76,12 +76,12 @@ def _build_single_edge() -> nx.Graph:
 
 register(Fixture(
     name="single_edge",
-    description="One horizontal edge between a=(0,0) and b=(1,0). Every metric is vacuously or trivially 1.",
+    description="One horizontal edge between a=(0,0) and b=(1,0). Every metric is vacuously or trivially 1, except Asp = 0 (h = 0 → paper §3.2 degenerate branch).",
     build=_build_single_edge,
     expected={
         "angular_resolution_min_angle": 1.0,
         "angular_resolution_avg_angle": 1.0,
-        "aspect_ratio": 1.0,
+        "aspect_ratio": 0.0,  # h = 0 → degenerate case → 0 per spec.
         "crossing_angle": 1.0,
         "edge_crossings": 1.0,
         "edge_length_deviation": 1.0,
@@ -114,7 +114,7 @@ register(Fixture(
         # Middle nodes have degree 2, legs at 0° and 180° → gaps 180/180 → AR = 1.
         "angular_resolution_min_angle": 1.0,
         "angular_resolution_avg_angle": 1.0,
-        "aspect_ratio": 1.0,  # h = 0 → degenerate case → 1 per spec.
+        "aspect_ratio": 0.0,  # h = 0 → degenerate case → 0 per spec.
         "crossing_angle": 1.0,
         "edge_crossings": 1.0,  # collinear, no crossings.
         "edge_orthogonality": 1.0,  # all horizontal.
@@ -381,7 +381,7 @@ register(Fixture(
     expected={
         "angular_resolution_min_angle": 1.0,
         "angular_resolution_avg_angle": 1.0,
-        "aspect_ratio": 1.0,  # h=0.
+        "aspect_ratio": 0.0,  # h=0 → degenerate → 0 per spec.
         "crossing_angle": 1.0,
         "edge_crossings": 1.0,
         "edge_orthogonality": 1.0,
@@ -433,8 +433,8 @@ register(Fixture(
     description="Two collinear path components: P3 a-b-c at x=0,1,2 and P2 d-e at x=4,5. Exercises per-component weighted aggregation in KSM / NP (DQ-1).",
     build=_build_disconnected_two_paths,
     expected={
-        # h=0 → degenerate → 1 per spec.
-        "aspect_ratio": 1.0,
+        # h=0 → degenerate → 0 per spec.
+        "aspect_ratio": 0.0,
         # Only eligible node for min-angle AR is 'b' (degree 2, 180° gap) → 1.
         # All others are degree 1 and excluded.
         "angular_resolution_min_angle": 1.0,

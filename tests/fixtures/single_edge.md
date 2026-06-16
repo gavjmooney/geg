@@ -2,12 +2,13 @@
 
 Nodes `a=(0,0)`, `b=(1,0)`. One horizontal edge `a-b`.
 
-Every metric is trivially or vacuously 1 — this fixture is a smoke test.
+Every metric is trivially or vacuously 1 — this fixture is a smoke test —
+except Asp, which is 0 on the degenerate (zero-height) bounding box.
 
 | Metric | Expected | Reason |
 |---|---|---|
 | AR (min/avg) | 1 | Both nodes have degree 1; no eligible vertices → vacuous 1. |
-| Asp | 1 | Height = 0 → paper §3.2 degenerate branch. |
+| Asp | 0 | Height = 0 → paper §3.2 degenerate branch. |
 | CA | 1 | No crossings. |
 | EC | 1 | `c_max = C(1,2) - 0 = 0` → return 1. |
 | ELD | 1 | Single edge → uniform by construction. |

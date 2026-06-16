@@ -135,7 +135,7 @@ geometry additionally read the edge `path` attribute.
 | `neighbourhood_preservation(G)`     | §3.2 eq. 8  | Jaccard overlap of topological k-neighbourhoods vs. k-nearest in layout.    |
 | `node_resolution(G)`                | §3.2 eq. 9  | Ratio of the minimum to the maximum pairwise node distance.                 |
 | `node_uniformity(G)`                | §3.2 eq. 10 | Evenness of node placement under grid occupancy.                            |
-| `node_edge_occlusion(G)`            | ext.        | Cubic-soft penalty for edges passing too close to non-incident nodes.       |
+| `node_edge_occlusion(G)`            | ext.        | Cubic-soft penalty for edges passing too close to a non-incident node's drawn glyph (shape-aware disk/box). |
 
 `node_edge_occlusion` is a library extension not in the GD 2025 paper;
 it is introduced in a forthcoming publication.
@@ -151,7 +151,7 @@ edge_length_deviation(G, ideal=None, *, weight=None) -> float
 edge_orthogonality(G) -> float
 kruskal_stress(G, *, apsp=None, weight=None) -> float
 neighbourhood_preservation(G, k=None) -> float
-node_edge_occlusion(G, *, epsilon_fraction=0.05) -> float
+node_edge_occlusion(G, epsilon_fraction=0.02, *, fallback_radius_fraction=0.01) -> float
 node_resolution(G) -> float
 node_uniformity(G, *, bbox=None, include_curves=False) -> float
 ```
@@ -168,7 +168,7 @@ node_uniformity(G, *, bbox=None, include_curves=False) -> float
 | `edge_orthogonality(G)`        | ✓   | ✗ ¹ | adaptive per-edge flattening; length-weighted per-segment deviation | none — per-edge, independent |
 | `kruskal_stress(G)`            | ✓   | ✓   | **ignored** — uses node coords + graph-theoretic distance | **per-component** weighted by convex-hull area (paper §3.3); singleton components contribute nothing |
 | `neighbourhood_preservation(G)`| ✓   | ✓   | **ignored** | **per-component** weighted by convex-hull area (paper §3.3) |
-| `node_edge_occlusion(G)`       | ✓ ² | ≈ ³ | adaptive per-edge flattening; node-to-polyline distance; ε uses node-only bbox | none — per edge, independent |
+| `node_edge_occlusion(G)`       | ✓ ² | ≈ ³ | adaptive per-edge flattening; shape-aware glyph-to-polyline distance (disk or box); ε uses node-only bbox | none — per edge, independent |
 | `node_resolution(G)`           | ✓   | ✓   | **ignored** — node coords only | none — global min/max over all pairs |
 | `node_uniformity(G)`           | ✓   | ✗ ¹ | node-only bbox by default; `include_curves=True` switches to curve-promoted bbox | none — single grid over all nodes |
 
@@ -248,9 +248,9 @@ A GEG graph, once loaded, is a `networkx.Graph` (or `DiGraph` when
 | Level | Attribute           | Meaning                                                          |
 | ----- | ------------------- | ---------------------------------------------------------------- |
 | node  | `x`, `y`            | Coordinates (float). Required by every layout-dependent metric.  |
-| node  | `width`, `height`   | Optional bounding-box size; used by `node_edge_occlusion`.       |
+| node  | `width`, `height`   | Optional glyph size; used by `node_edge_occlusion` (and `size` for squares). |
 | node  | `radius`            | Optional disk radius; preferred by `node_edge_occlusion`.        |
-| node  | `shape`, `colour`   | Optional visual hints carried through SVG rendering.             |
+| node  | `shape`, `colour`   | Optional visual hints carried through SVG rendering; `shape` (`square`/`ellipse`) also selects the box vs disk footprint in `node_edge_occlusion`. |
 | edge  | `path`              | SVG path string (e.g. `M 0,0 L 10,10` or with `C` cubics).       |
 | edge  | `polyline`          | Bool: `True` when the path is a pure M/L polyline.               |
 

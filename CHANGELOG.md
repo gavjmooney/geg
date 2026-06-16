@@ -2,6 +2,51 @@
 
 All notable changes to the `geg` package are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.4] — 2026-06-16
+
+### Changed
+
+- **`aspect_ratio` now returns `0.0` (was `1.0`) on a degenerate bounding
+  box** (`h = 0` or `w = 0`, i.e. all nodes collinear / a single node),
+  matching paper §3.2's first branch. Tests, fixtures (`single_edge`,
+  `path_stretched`, `long_edge_path`, `disconnected_two_paths`), and their
+  `.md` derivations are updated to the new value, and
+  `compute_metrics`-on-empty-graph pins Asp = 0.0 explicitly.
+  **TVCG-impact:** affects any published drawing whose bounding box is
+  degenerate (1D/0D layouts only); two-dimensional drawings are unaffected.
+
+- **`node_edge_occlusion` is now shape-aware and has a non-degenerate
+  footprint fallback.** The per-edge penalty is unchanged in form
+  (`max(0, 1 - gap / ε) ** 3`); what changed is how a node's `gap` to an
+  edge is measured:
+  - **Explicit `radius` still wins** (the node is a disk of that radius) —
+    this remains the default for circular nodes.
+  - **Node shape is honoured** when no explicit `radius` is present. A node
+    tagged `shape` ∈ {`square`, `rectangle`, `rect`} is modelled as the
+    axis-aligned rectangle it is actually drawn as (half-extents from
+    `width`/`height`, or `size`), and `gap` is the **true segment-to-rectangle
+    distance**. Previously every dimensioned node was approximated by the
+    circumscribed disk `max(width, height) / 2`, which over-reported occlusion
+    for thin rectangles (a 40×2 node 6 units off an edge was scored as fully
+    occluding it). Ellipse/circle nodes — and dimensioned nodes with no
+    `shape` tag — keep the circumscribing-disk model, so their behaviour is
+    unchanged.
+  - **New `fallback_radius_fraction` kwarg (default `0.01`).** Nodes carrying
+    no `radius`, no `width`/`height`/`size`, and no `shape` are now given a
+    disk of radius `fallback_radius_fraction * bbox_diagonal` instead of
+    collapsing to a dimensionless point, so they occupy a realistic visual
+    footprint (≈ a default-rendered node glyph). Pass
+    `fallback_radius_fraction=0.0` to recover the prior centre-to-line
+    behaviour for such nodes.
+  - **TVCG-impact: none.** NEO is a library extension introduced after the
+    published dataset, so no existing published metric column is affected.
+    Downstream callers that compute NEO on drawings with `shape`-tagged
+    rectangular nodes, or with size-less nodes, will see values shift (thin
+    rectangles score *less* occluded; size-less nodes score *more* occluded).
+  - New regression tests `TestShapeAware` and `TestFallbackRadiusFraction` in
+    `tests/test_node_edge_occlusion.py` pin the box model, the
+    `size`-attribute path, the disk model for ellipses, and the fallback.
+
 ## [0.2.3] — 2026-05-05
 
 ### Fixed
