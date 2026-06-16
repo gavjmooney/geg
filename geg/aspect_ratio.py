@@ -13,7 +13,7 @@ def aspect_ratio(
     """Aspect-ratio metric in [0, 1].
 
     Paper §3.2:
-        Asp(D) = 1             if h(D) = 0 or w(D) = 0
+        Asp(D) = 0             if h(D) = 0 or w(D) = 0
                = h(D) / w(D)   if h(D) <= w(D)
                = w(D) / h(D)   otherwise
     where h, w are the height and width of the axis-aligned bounding box of
@@ -36,5 +36,5 @@ def aspect_ratio(
     min_x, min_y, max_x, max_y = bbox
     w, h = max_x - min_x, max_y - min_y
     if w == 0 or h == 0:
-        return 1.0
+        return 0.0
     return h / w if h <= w else w / h
